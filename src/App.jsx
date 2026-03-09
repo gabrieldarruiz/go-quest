@@ -368,6 +368,145 @@ function PomodoroTab({ userID }) {
   );
 }
 
+function routeFromHash() {
+  if (typeof window === "undefined") return "/";
+  const route = window.location.hash.replace(/^#/, "");
+  return route || "/";
+}
+
+function LandingPage({ hasSession }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "radial-gradient(circle at 20% 10%, #241028, #06060a 50%)", color: "#f0f0ff", fontFamily: "monospace", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ width: "100%", maxWidth: 980, border: "1px solid #2a2a4e", borderRadius: 8, background: "linear-gradient(160deg, #0f0813, #06060a)", overflow: "hidden" }}>
+        <div style={{ padding: "38px 32px", borderBottom: "1px solid #1a1a2e" }}>
+          <div style={{ fontSize: 12, color: "#ff2d7877", letterSpacing: 4, marginBottom: 14 }}>GO_QUEST PLATFORM</div>
+          <div style={{ fontFamily: "'VT323', monospace", fontSize: 72, lineHeight: 1, letterSpacing: 3, background: "linear-gradient(90deg, #ff2d78, #ff6b35, #ffcc00)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>GO_QUEST</div>
+          <div style={{ marginTop: 8, fontSize: 16, color: "#c0a0ff", lineHeight: 1.6 }}>
+            Plataforma gamificada para evoluir em Go com trilha, metas diárias, pomodoro e acompanhamento de progresso.
+          </div>
+          <div style={{ marginTop: 20, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a href="#/cadastro" style={{ textDecoration: "none", background: "#ff2d7811", border: "1px solid #ff2d7855", color: "#ff2d78", padding: "10px 18px", borderRadius: 4, fontSize: 13, letterSpacing: 1 }}>Criar conta</a>
+            <a href="#/login" style={{ textDecoration: "none", background: "#a855f711", border: "1px solid #a855f755", color: "#a855f7", padding: "10px 18px", borderRadius: 4, fontSize: 13, letterSpacing: 1 }}>Fazer login</a>
+            {hasSession && (
+              <a href="#/app" style={{ textDecoration: "none", background: "transparent", border: "1px solid #1f3a4e", color: "#00cfff", padding: "10px 18px", borderRadius: 4, fontSize: 13, letterSpacing: 1 }}>Abrir app</a>
+            )}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, padding: 20 }}>
+          {[
+            ["10 níveis", "Jornada estruturada de iniciante a especialista"],
+            ["+50 conquistas", "Sistema de XP e marcos para manter consistência"],
+            ["Metas diárias", "Ritmo de estudo com checklist objetivo"],
+            ["Pomodoro", "Sessões de foco e pausa dentro da plataforma"],
+          ].map(([title, desc]) => (
+            <div key={title} style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: "14px 12px" }}>
+              <div style={{ fontSize: 13, color: "#f0f0ff", marginBottom: 6 }}>{title}</div>
+              <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.5 }}>{desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthCard({ title, subtitle, children, footer }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "radial-gradient(circle at 80% 0%, #1f0f2d, #06060a 55%)", color: "#f0f0ff", fontFamily: "monospace", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ width: "100%", maxWidth: 430, background: "#0a0a0f", border: "1px solid #2a2a4e", borderRadius: 8, padding: 26 }}>
+        <div style={{ fontSize: 12, color: "#ff2d7877", letterSpacing: 3, marginBottom: 10 }}>GO_QUEST AUTH</div>
+        <div style={{ fontFamily: "'VT323', monospace", fontSize: 50, lineHeight: 1, marginBottom: 8, background: "linear-gradient(90deg, #ff2d78, #a855f7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{title}</div>
+        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 18, lineHeight: 1.7 }}>{subtitle}</div>
+        {children}
+        <div style={{ marginTop: 14, fontSize: 12, color: "#777" }}>{footer}</div>
+      </div>
+    </div>
+  );
+}
+
+function LoginPage({ defaultID, onSubmit, pending, error }) {
+  const [userID, setUserID] = useState(defaultID || "");
+  const submit = (e) => {
+    e.preventDefault();
+    if (!userID.trim()) return;
+    onSubmit(userID.trim());
+  };
+
+  return (
+    <AuthCard title="LOGIN" subtitle="Entre com o ID do usuário para recuperar seu progresso.">
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <input
+          value={userID}
+          onChange={(e) => setUserID(e.target.value)}
+          placeholder="ID do usuário"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <button type="submit" disabled={pending} style={{ background: "#a855f711", border: "1px solid #a855f755", color: "#a855f7", padding: "10px 12px", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: 13, opacity: pending ? 0.7 : 1 }}>
+          {pending ? "Entrando..." : "Entrar"}
+        </button>
+        {error && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{error}</div>}
+      </form>
+      <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+        <a href="#/cadastro" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none" }}>Criar conta</a>
+        <a href="#/" style={{ fontSize: 12, color: "#888", textDecoration: "none" }}>Voltar</a>
+      </div>
+    </AuthCard>
+  );
+}
+
+function SignupPage({ onSubmit, pending, error }) {
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!username.trim() || !email.trim()) return;
+    onSubmit({ username: username.trim(), email: email.trim() });
+  };
+
+  return (
+    <AuthCard title="CADASTRO" subtitle="Crie seu usuário para iniciar a trilha com progresso salvo.">
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Username"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          placeholder="Email"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <button type="submit" disabled={pending} style={{ background: "#ff2d7811", border: "1px solid #ff2d7855", color: "#ff2d78", padding: "10px 12px", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: 13, opacity: pending ? 0.7 : 1 }}>
+          {pending ? "Criando..." : "Criar conta"}
+        </button>
+        {error && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{error}</div>}
+      </form>
+      <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+        <a href="#/login" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none" }}>Já tenho conta</a>
+        <a href="#/" style={{ fontSize: 12, color: "#888", textDecoration: "none" }}>Voltar</a>
+      </div>
+    </AuthCard>
+  );
+}
+
+function AuthRequiredPage() {
+  return (
+    <AuthCard title="ACESSO" subtitle="Faça login ou cadastre um usuário antes de entrar no app.">
+      <div style={{ display: "flex", gap: 10 }}>
+        <a href="#/login" style={{ textDecoration: "none", background: "#a855f711", border: "1px solid #a855f755", color: "#a855f7", padding: "10px 14px", borderRadius: 4, fontSize: 13 }}>Login</a>
+        <a href="#/cadastro" style={{ textDecoration: "none", background: "#ff2d7811", border: "1px solid #ff2d7855", color: "#ff2d78", padding: "10px 14px", borderRadius: 4, fontSize: 13 }}>Cadastro</a>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <a href="#/" style={{ fontSize: 12, color: "#888", textDecoration: "none" }}>Voltar para apresentação</a>
+      </div>
+    </AuthCard>
+  );
+}
+
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
 const DAILY_GOALS = [
@@ -379,6 +518,9 @@ const DAILY_GOALS = [
 ];
 
 export default function GoQuest() {
+  const [route, setRoute] = useState(routeFromHash);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [userID, setUserID] = useState(null);
   const [totalXP, setTotalXP] = useState(0);
   const [unlocked, setUnlocked] = useState(new Set());
@@ -390,24 +532,25 @@ export default function GoQuest() {
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    const onHashChange = () => setRoute(routeFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { const t = setInterval(() => setPulse(v => !v), 1500); return () => clearInterval(t); }, []);
 
   // ── Init: create or load user from localStorage ───────────────────────────
   useEffect(() => {
+    if (route !== "/app") return;
+
     async function init() {
+      setLoading(true);
       let uid = localStorage.getItem("goquest_user_id");
       if (!uid) {
-        // create anonymous user with a random username
-        const rand = Math.random().toString(36).slice(2, 8);
-        try {
-          const user = await api.createUser(`gopher_${rand}`, `gopher_${rand}@goquest.local`);
-          uid = user.id;
-          localStorage.setItem("goquest_user_id", uid);
-        } catch {
-          setLoading(false);
-          return;
-        }
+        setLoading(false);
+        return;
       }
       setUserID(uid);
 
@@ -432,7 +575,7 @@ export default function GoQuest() {
       setLoading(false);
     }
     init();
-  }, []);
+  }, [route]);
 
   // ── Recompute level from XP ───────────────────────────────────────────────
   const currentLevel = [...LEVELS].reverse().find(l => totalXP >= l.xpMin) || LEVELS[0];
@@ -444,6 +587,53 @@ export default function GoQuest() {
     setNotification(notif);
     setTimeout(() => setNotification(null), ms);
   }, []);
+
+  const goTo = useCallback((nextRoute) => {
+    window.location.hash = nextRoute;
+  }, []);
+
+  const handleSignup = useCallback(async ({ username, email }) => {
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      const user = await api.createUser(username, email);
+      if (!user?.id) throw new Error("Cadastro sem ID retornado.");
+      localStorage.setItem("goquest_user_id", user.id);
+      setUserID(user.id);
+      setTotalXP(user.total_xp || 0);
+      setUnlocked(new Set());
+      setTodayDone(new Set());
+      goTo("/app");
+    } catch {
+      setAuthError("Nao foi possivel criar a conta. Verifique os dados e tente novamente.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [goTo]);
+
+  const handleLogin = useCallback(async (id) => {
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      await api.getUser(id);
+      localStorage.setItem("goquest_user_id", id);
+      setUserID(id);
+      goTo("/app");
+    } catch {
+      setAuthError("Usuario nao encontrado. Verifique o ID ou faca um novo cadastro.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [goTo]);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("goquest_user_id");
+    setUserID(null);
+    setTotalXP(0);
+    setUnlocked(new Set());
+    setTodayDone(new Set());
+    goTo("/login");
+  }, [goTo]);
 
   const toggleA = useCallback(async (id) => {
     if (!userID) return;
@@ -486,6 +676,22 @@ export default function GoQuest() {
   const dateStr = time.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).toUpperCase();
 
   const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
+
+  if (route === "/") {
+    return <LandingPage hasSession={Boolean(localStorage.getItem("goquest_user_id"))} />;
+  }
+  if (route === "/login") {
+    return <LoginPage defaultID={localStorage.getItem("goquest_user_id") || ""} onSubmit={handleLogin} pending={authLoading} error={authError} />;
+  }
+  if (route === "/cadastro") {
+    return <SignupPage onSubmit={handleSignup} pending={authLoading} error={authError} />;
+  }
+  if (route !== "/app") {
+    return <LandingPage hasSession={Boolean(localStorage.getItem("goquest_user_id"))} />;
+  }
+  if (!loading && !userID) {
+    return <AuthRequiredPage />;
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#06060a", fontFamily: "monospace", color: "#f0f0ff", fontSize: 14 }}>
@@ -530,6 +736,14 @@ export default function GoQuest() {
             <div style={{ textAlign: "right" }}>
               <div style={{ fontFamily: "'VT323', monospace", fontSize: 30, letterSpacing: 3, background: "linear-gradient(90deg, #a855f7, #ff2d78)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>{timeStr}</div>
               <div style={{ fontSize: 12, color: "#a855f755", letterSpacing: 2, marginTop: 1 }}>{dateStr}</div>
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <a href="#/" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none", border: "1px solid #00cfff33", borderRadius: 3, padding: "3px 8px" }}>
+                  inicio
+                </a>
+                <button onClick={handleLogout} style={{ fontSize: 12, color: "#ff6b6b", background: "transparent", border: "1px solid #ff6b6b33", borderRadius: 3, padding: "3px 8px", cursor: "pointer", fontFamily: "monospace" }}>
+                  sair
+                </button>
+              </div>
             </div>
           </div>
           <div style={{ height: 1, background: "linear-gradient(90deg, #ff2d7855, #ff6b3533, transparent)", marginTop: 12 }} />
