@@ -819,7 +819,27 @@ export default function GoQuest() {
 
   const toggleA = useCallback(async (id) => {
     if (!userID) return;
-    if (unlocked.has(id)) return;
+    const isUnlocked = unlocked.has(id);
+
+    if (isUnlocked) {
+      setUnlocked(prev => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+      try {
+        await api.removeAchievement(userID, id);
+        const ach = ACHIEVEMENTS.find(a => a.id === id);
+        if (ach) {
+          showNotif({ icon: "↺", title: `${ach.title} removida`, desc: `-${ach.xp} XP` });
+        }
+        const summary = await api.getUser(userID);
+        setTotalXP(summary.total_xp);
+      } catch {
+        setUnlocked(prev => new Set([...prev, id]));
+      }
+      return;
+    }
 
     try {
       await api.unlockAchievement(userID, id);

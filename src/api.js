@@ -41,6 +41,9 @@ export const getUserAchievements = (userID) =>
 export const unlockAchievement = (userID, achievementID) =>
   req("POST", `/users/${userID}/achievements/${achievementID}`);
 
+export const removeAchievement = (userID, achievementID) =>
+  req("DELETE", `/users/${userID}/achievements/${achievementID}`);
+
 // ─── Daily Goals ─────────────────────────────────────────────────────────────
 
 export const getDailyGoals = (userID) =>

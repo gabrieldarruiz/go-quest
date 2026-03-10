@@ -344,6 +344,30 @@ func (h *Handler) UnlockAchievement(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, achievement)
 }
 
+func (h *Handler) RemoveAchievement(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	achievementID := chi.URLParam(r, "achievementID")
+	if achievementID == "" {
+		writeError(w, http.StatusBadRequest, "achievement id is required")
+		return
+	}
+
+	if err := h.repo.RemoveAchievement(r.Context(), userID, achievementID); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"achievement_id": achievementID,
+		"completed":      false,
+	})
+}
+
 // ─── Daily Goals ─────────────────────────────────────────────────────────────
 
 func (h *Handler) GetDailyGoals(w http.ResponseWriter, r *http.Request) {

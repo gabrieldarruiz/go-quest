@@ -23,6 +23,54 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
+func levelFromXP(totalXP int) int {
+	switch {
+	case totalXP < 200:
+		return 1
+	case totalXP < 500:
+		return 2
+	case totalXP < 900:
+		return 3
+	case totalXP < 1400:
+		return 4
+	case totalXP < 2100:
+		return 5
+	case totalXP < 3000:
+		return 6
+	case totalXP < 4200:
+		return 7
+	case totalXP < 5700:
+		return 8
+	case totalXP < 7500:
+		return 9
+	default:
+		return 10
+	}
+}
+
+func (r *Repository) recalcUserProgressFromAchievements(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	var totalXP int
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(SUM(a.xp_reward), 0)
+		FROM user_achievements ua
+		JOIN achievements a ON a.id = ua.achievement_id
+		WHERE ua.user_id = $1
+	`, userID).Scan(&totalXP); err != nil {
+		return fmt.Errorf("sum achievements xp: %w", err)
+	}
+
+	currentLevel := levelFromXP(totalXP)
+	if _, err := tx.Exec(ctx, `
+		UPDATE user_progress
+		SET total_xp = $2, current_level = $3
+		WHERE user_id = $1
+	`, userID, totalXP, currentLevel); err != nil {
+		return fmt.Errorf("update user progress totals: %w", err)
+	}
+
+	return nil
+}
+
 // ─── Users ───────────────────────────────────────────────────────────────────
 
 func (r *Repository) CreateUser(ctx context.Context, username, email, password string) (*models.User, error) {
@@ -308,7 +356,13 @@ func (r *Repository) UnlockAchievement(ctx context.Context, userID uuid.UUID, ac
 		return nil, fmt.Errorf("achievement not found: %w", err)
 	}
 
-	_, err = r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO user_achievements (user_id, achievement_id)
 		VALUES ($1, $2)
 		ON CONFLICT (user_id, achievement_id) DO NOTHING
@@ -317,11 +371,71 @@ func (r *Repository) UnlockAchievement(ctx context.Context, userID uuid.UUID, ac
 		return nil, fmt.Errorf("unlock achievement: %w", err)
 	}
 
-	if err := r.AddXP(ctx, userID, a.XPReward, "achievement", achievementID); err != nil {
-		return nil, fmt.Errorf("add xp: %w", err)
+	if tag.RowsAffected() == 1 {
+		var sid *string
+		sid = &achievementID
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO xp_history (user_id, xp_gained, source, source_id)
+			VALUES ($1, $2, $3, $4)
+		`, userID, a.XPReward, "achievement", sid); err != nil {
+			return nil, fmt.Errorf("insert xp_history: %w", err)
+		}
+	}
+
+	if err := r.recalcUserProgressFromAchievements(ctx, tx, userID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
 	return &a, nil
+}
+
+func (r *Repository) RemoveAchievement(ctx context.Context, userID uuid.UUID, achievementID string) error {
+	var exists int
+	err := r.pool.QueryRow(ctx, `
+		SELECT 1
+		FROM achievements
+		WHERE id = $1
+	`, achievementID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("achievement not found: %w", err)
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		DELETE FROM user_achievements
+		WHERE user_id = $1 AND achievement_id = $2
+	`, userID, achievementID)
+	if err != nil {
+		return fmt.Errorf("remove achievement: %w", err)
+	}
+
+	if tag.RowsAffected() > 0 {
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM xp_history
+			WHERE user_id = $1 AND source = 'achievement' AND source_id = $2
+		`, userID, achievementID); err != nil {
+			return fmt.Errorf("delete achievement xp history: %w", err)
+		}
+	}
+
+	if err := r.recalcUserProgressFromAchievements(ctx, tx, userID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+
+	return nil
 }
 
 // ─── Daily Goals ─────────────────────────────────────────────────────────────

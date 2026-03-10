@@ -75,6 +75,7 @@ func main() {
 				r.Get("/progress", h.GetProgress)
 				r.Get("/achievements", h.GetUserAchievements)
 				r.Post("/achievements/{achievementID}", h.UnlockAchievement)
+				r.Delete("/achievements/{achievementID}", h.RemoveAchievement)
 				r.Get("/daily-goals", h.GetDailyGoals)
 				r.Post("/daily-goals/{goalIndex}", h.CompleteGoal)
 				r.Delete("/daily-goals/{goalIndex}", h.UncompleteGoal)
