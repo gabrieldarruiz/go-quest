@@ -46,6 +46,8 @@ func main() {
 		os.Getenv("RESEND_API_KEY"),
 		os.Getenv("RESEND_FROM_EMAIL"),
 		os.Getenv("APP_BASE_URL"),
+		os.Getenv("OPENAI_API_KEY"),
+		os.Getenv("OPENAI_MODEL"),
 	)
 
 	r := chi.NewRouter()
@@ -61,6 +63,10 @@ func main() {
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		r.Route("/ai", func(r chi.Router) {
+			r.Post("/chat", h.AIChat)
+		})
+
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", h.CreateUser)
 			r.Post("/login", h.Login)

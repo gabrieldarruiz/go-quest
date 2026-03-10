@@ -198,13 +198,8 @@ Responda sempre em português. Seja conciso (máx 4 parágrafos). Foque em Go. D
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const ask = async (msgs) => {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system, messages: msgs }),
-    });
-    const data = await res.json();
-    return data.content?.map(b => b.text || "").join("") || "Sem resposta.";
+    const data = await api.aiChat(msgs, system, 1024);
+    return data.content || "Sem resposta.";
   };
 
   const start = async () => {
@@ -240,11 +235,11 @@ Responda sempre em português. Seja conciso (máx 4 parágrafos). Foque em Go. D
 
   return (
     <div style={{ background: "#0a0a0f", border: "1px solid #ff2d7822", borderRadius: 4, padding: 16, display: "flex", flexDirection: "column" }}>
-      <div style={{ fontSize: 12, color: "#ff2d7855", letterSpacing: 2, marginBottom: 12 }}>// CLAUDE — MENTOR GO &gt;_</div>
+      <div style={{ fontSize: 12, color: "#ff2d7855", letterSpacing: 2, marginBottom: 12 }}>// GOPHER LEON (OPENAI) — MENTOR GO &gt;_</div>
       <div style={{ overflowY: "auto", maxHeight: 380, display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
         {messages.map((m, i) => (
           <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "92%", background: m.role === "user" ? "#a855f711" : "#ff2d7808", border: `1px solid ${m.role === "user" ? "#a855f733" : "#ff2d7822"}`, borderRadius: 3, padding: "10px 14px" }}>
-            {m.role === "assistant" && <div style={{ fontSize: 14, color: "#ff2d7844", letterSpacing: 1, marginBottom: 5 }}>CLAUDE &gt;_</div>}
+            {m.role === "assistant" && <div style={{ fontSize: 14, color: "#ff2d7844", letterSpacing: 1, marginBottom: 5 }}>GOPHER_LEON &gt;_</div>}
             <div style={{ fontSize: 13, color: m.role === "user" ? "#c0a0ff" : "#f0c0d0", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{m.content}</div>
           </div>
         ))}

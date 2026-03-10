@@ -70,3 +70,8 @@ export const getPomodoroToday = (userID) =>
 
 export const getProgress = (userID) =>
   req("GET", `/users/${userID}/progress`);
+
+// ─── AI ─────────────────────────────────────────────────────────────────────
+
+export const aiChat = (messages, system, maxTokens = 900) =>
+  req("POST", "/ai/chat", { messages, system, max_tokens: maxTokens });

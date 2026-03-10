@@ -26,17 +26,24 @@ type Handler struct {
 	resendAPIKey    string
 	resendFromEmail string
 	appBaseURL      string
+	openAIAPIKey    string
+	openAIModel     string
 }
 
-func New(repo *repository.Repository, resendAPIKey, resendFromEmail, appBaseURL string) *Handler {
+func New(repo *repository.Repository, resendAPIKey, resendFromEmail, appBaseURL, openAIAPIKey, openAIModel string) *Handler {
 	if appBaseURL == "" {
 		appBaseURL = "http://localhost:5173"
+	}
+	if openAIModel == "" {
+		openAIModel = "gpt-4o-mini"
 	}
 	return &Handler{
 		repo:            repo,
 		resendAPIKey:    resendAPIKey,
 		resendFromEmail: resendFromEmail,
 		appBaseURL:      strings.TrimRight(appBaseURL, "/"),
+		openAIAPIKey:    openAIAPIKey,
+		openAIModel:     openAIModel,
 	}
 }
 
