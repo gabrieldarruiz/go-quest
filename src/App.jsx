@@ -370,8 +370,17 @@ function PomodoroTab({ userID }) {
 
 function routeFromHash() {
   if (typeof window === "undefined") return "/";
-  const route = window.location.hash.replace(/^#/, "");
-  return route || "/";
+  const hash = window.location.hash.replace(/^#/, "") || "/";
+  const [path] = hash.split("?");
+  return path || "/";
+}
+
+function hashSearchParams() {
+  if (typeof window === "undefined") return new URLSearchParams();
+  const hash = window.location.hash.replace(/^#/, "") || "/";
+  const idx = hash.indexOf("?");
+  if (idx === -1) return new URLSearchParams();
+  return new URLSearchParams(hash.slice(idx + 1));
 }
 
 function LandingPage({ hasSession }) {
@@ -424,21 +433,32 @@ function AuthCard({ title, subtitle, children, footer }) {
   );
 }
 
-function LoginPage({ defaultID, onSubmit, pending, error }) {
-  const [userID, setUserID] = useState(defaultID || "");
+function LoginPage({ onSubmit, pending, error }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const submit = (e) => {
     e.preventDefault();
-    if (!userID.trim()) return;
-    onSubmit(userID.trim());
+    if (!email.trim() || !password) return;
+    onSubmit({ email: email.trim(), password });
   };
 
   return (
-    <AuthCard title="LOGIN" subtitle="Entre com o ID do usuário para recuperar seu progresso.">
+    <AuthCard title="LOGIN" subtitle="Entre com email e senha para recuperar seu progresso.">
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <input
-          value={userID}
-          onChange={(e) => setUserID(e.target.value)}
-          placeholder="ID do usuário"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          type="email"
+          autoComplete="email"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Senha"
+          type="password"
+          autoComplete="current-password"
           style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
         />
         <button type="submit" disabled={pending} style={{ background: "#a855f711", border: "1px solid #a855f755", color: "#a855f7", padding: "10px 12px", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: 13, opacity: pending ? 0.7 : 1 }}>
@@ -448,6 +468,7 @@ function LoginPage({ defaultID, onSubmit, pending, error }) {
       </form>
       <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
         <a href="#/cadastro" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none" }}>Criar conta</a>
+        <a href="#/forgot-password" style={{ fontSize: 12, color: "#ffcc00", textDecoration: "none" }}>Esqueci minha senha</a>
         <a href="#/" style={{ fontSize: 12, color: "#888", textDecoration: "none" }}>Voltar</a>
       </div>
     </AuthCard>
@@ -457,11 +478,23 @@ function LoginPage({ defaultID, onSubmit, pending, error }) {
 function SignupPage({ onSubmit, pending, error }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [localError, setLocalError] = useState("");
 
   const submit = (e) => {
     e.preventDefault();
-    if (!username.trim() || !email.trim()) return;
-    onSubmit({ username: username.trim(), email: email.trim() });
+    setLocalError("");
+    if (!username.trim() || !email.trim() || !password || !confirmPassword) return;
+    if (password.length < 6) {
+      setLocalError("A senha precisa ter no minimo 6 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLocalError("As senhas nao conferem.");
+      return;
+    }
+    onSubmit({ username: username.trim(), email: email.trim(), password });
   };
 
   return (
@@ -478,16 +511,124 @@ function SignupPage({ onSubmit, pending, error }) {
           onChange={(e) => setEmail(e.target.value)}
           type="email"
           placeholder="Email"
+          autoComplete="email"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          placeholder="Senha (min. 6 caracteres)"
+          autoComplete="new-password"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <input
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          type="password"
+          placeholder="Confirmar senha"
+          autoComplete="new-password"
           style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
         />
         <button type="submit" disabled={pending} style={{ background: "#ff2d7811", border: "1px solid #ff2d7855", color: "#ff2d78", padding: "10px 12px", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: 13, opacity: pending ? 0.7 : 1 }}>
           {pending ? "Criando..." : "Criar conta"}
         </button>
+        {localError && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{localError}</div>}
         {error && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{error}</div>}
       </form>
       <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
         <a href="#/login" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none" }}>Já tenho conta</a>
         <a href="#/" style={{ fontSize: 12, color: "#888", textDecoration: "none" }}>Voltar</a>
+      </div>
+    </AuthCard>
+  );
+}
+
+function ForgotPasswordPage({ onSubmit, pending, error, message }) {
+  const [email, setEmail] = useState("");
+  const submit = (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    onSubmit(email.trim());
+  };
+
+  return (
+    <AuthCard title="RECUPERAR SENHA" subtitle="Informe seu email para receber um link de redefinicao.">
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          placeholder="Email"
+          autoComplete="email"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <button type="submit" disabled={pending} style={{ background: "#ffcc0011", border: "1px solid #ffcc0055", color: "#ffcc00", padding: "10px 12px", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: 13, opacity: pending ? 0.7 : 1 }}>
+          {pending ? "Enviando..." : "Enviar link"}
+        </button>
+        {message && <div style={{ fontSize: 12, color: "#00ff88", lineHeight: 1.6 }}>{message}</div>}
+        {error && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{error}</div>}
+      </form>
+      <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+        <a href="#/login" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none" }}>Voltar ao login</a>
+      </div>
+    </AuthCard>
+  );
+}
+
+function ResetPasswordPage({ token, onSubmit, pending, error, message }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [localError, setLocalError] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    setLocalError("");
+    if (!token) {
+      setLocalError("Token de redefinicao ausente no link.");
+      return;
+    }
+    if (!password || !confirmPassword) return;
+    if (password.length < 6) {
+      setLocalError("A senha precisa ter no minimo 6 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLocalError("As senhas nao conferem.");
+      return;
+    }
+    onSubmit({ token, password });
+  };
+
+  return (
+    <AuthCard title="NOVA SENHA" subtitle="Defina uma nova senha para sua conta.">
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          placeholder="Nova senha"
+          autoComplete="new-password"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <input
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          type="password"
+          placeholder="Confirmar nova senha"
+          autoComplete="new-password"
+          style={{ width: "100%", background: "#06060a", border: "1px solid #1a1a2e", color: "#f0f0ff", padding: "11px 12px", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}
+        />
+        <button type="submit" disabled={pending || !token} style={{ background: "#ff2d7811", border: "1px solid #ff2d7855", color: "#ff2d78", padding: "10px 12px", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: 13, opacity: (pending || !token) ? 0.7 : 1 }}>
+          {pending ? "Atualizando..." : "Atualizar senha"}
+        </button>
+        {message && <div style={{ fontSize: 12, color: "#00ff88", lineHeight: 1.6 }}>{message}</div>}
+        {localError && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{localError}</div>}
+        {error && <div style={{ fontSize: 12, color: "#ff6b6b", lineHeight: 1.6 }}>{error}</div>}
+      </form>
+      <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+        <a href="#/login" style={{ fontSize: 12, color: "#00cfff", textDecoration: "none" }}>Voltar ao login</a>
+        <a href="#/forgot-password" style={{ fontSize: 12, color: "#ffcc00", textDecoration: "none" }}>Pedir novo link</a>
       </div>
     </AuthCard>
   );
@@ -521,6 +662,7 @@ export default function GoQuest() {
   const [route, setRoute] = useState(routeFromHash);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
   const [userID, setUserID] = useState(null);
   const [totalXP, setTotalXP] = useState(0);
   const [unlocked, setUnlocked] = useState(new Set());
@@ -537,6 +679,11 @@ export default function GoQuest() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    setAuthError("");
+    setAuthMessage("");
+  }, [route]);
 
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { const t = setInterval(() => setPulse(v => !v), 1500); return () => clearInterval(t); }, []);
@@ -592,11 +739,12 @@ export default function GoQuest() {
     window.location.hash = nextRoute;
   }, []);
 
-  const handleSignup = useCallback(async ({ username, email }) => {
+  const handleSignup = useCallback(async ({ username, email, password }) => {
     setAuthError("");
+    setAuthMessage("");
     setAuthLoading(true);
     try {
-      const user = await api.createUser(username, email);
+      const user = await api.register(username, email, password);
       if (!user?.id) throw new Error("Cadastro sem ID retornado.");
       localStorage.setItem("goquest_user_id", user.id);
       setUserID(user.id);
@@ -611,16 +759,21 @@ export default function GoQuest() {
     }
   }, [goTo]);
 
-  const handleLogin = useCallback(async (id) => {
+  const handleLogin = useCallback(async ({ email, password }) => {
     setAuthError("");
+    setAuthMessage("");
     setAuthLoading(true);
     try {
-      await api.getUser(id);
-      localStorage.setItem("goquest_user_id", id);
-      setUserID(id);
+      const session = await api.login(email, password);
+      if (!session?.user_id) throw new Error("Login sem user_id retornado.");
+      localStorage.setItem("goquest_user_id", session.user_id);
+      setUserID(session.user_id);
+      if (typeof session.total_xp === "number") {
+        setTotalXP(session.total_xp);
+      }
       goTo("/app");
     } catch {
-      setAuthError("Usuario nao encontrado. Verifique o ID ou faca um novo cadastro.");
+      setAuthError("Email ou senha invalidos.");
     } finally {
       setAuthLoading(false);
     }
@@ -633,6 +786,35 @@ export default function GoQuest() {
     setUnlocked(new Set());
     setTodayDone(new Set());
     goTo("/login");
+  }, [goTo]);
+
+  const handleForgotPassword = useCallback(async (email) => {
+    setAuthError("");
+    setAuthMessage("");
+    setAuthLoading(true);
+    try {
+      await api.forgotPassword(email);
+      setAuthMessage("Se o email existir, enviamos um link de recuperacao.");
+    } catch {
+      setAuthError("Nao foi possivel solicitar a recuperacao agora. Tente novamente.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  const handleResetPassword = useCallback(async ({ token, password }) => {
+    setAuthError("");
+    setAuthMessage("");
+    setAuthLoading(true);
+    try {
+      await api.resetPassword(token, password);
+      setAuthMessage("Senha atualizada com sucesso. Voce ja pode fazer login.");
+      setTimeout(() => goTo("/login"), 1200);
+    } catch {
+      setAuthError("Link invalido ou expirado. Solicite um novo.");
+    } finally {
+      setAuthLoading(false);
+    }
   }, [goTo]);
 
   const toggleA = useCallback(async (id) => {
@@ -676,15 +858,22 @@ export default function GoQuest() {
   const dateStr = time.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).toUpperCase();
 
   const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
+  const resetToken = hashSearchParams().get("token") || "";
 
   if (route === "/") {
     return <LandingPage hasSession={Boolean(localStorage.getItem("goquest_user_id"))} />;
   }
   if (route === "/login") {
-    return <LoginPage defaultID={localStorage.getItem("goquest_user_id") || ""} onSubmit={handleLogin} pending={authLoading} error={authError} />;
+    return <LoginPage onSubmit={handleLogin} pending={authLoading} error={authError} />;
   }
   if (route === "/cadastro") {
     return <SignupPage onSubmit={handleSignup} pending={authLoading} error={authError} />;
+  }
+  if (route === "/forgot-password") {
+    return <ForgotPasswordPage onSubmit={handleForgotPassword} pending={authLoading} error={authError} message={authMessage} />;
+  }
+  if (route === "/reset-password") {
+    return <ResetPasswordPage token={resetToken} onSubmit={handleResetPassword} pending={authLoading} error={authError} message={authMessage} />;
   }
   if (route !== "/app") {
     return <LandingPage hasSession={Boolean(localStorage.getItem("goquest_user_id"))} />;

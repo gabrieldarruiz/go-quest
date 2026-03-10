@@ -15,8 +15,17 @@ async function req(method, path, body) {
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
-export const createUser = (username, email) =>
-  req("POST", "/users", { username, email });
+export const register = (username, email, password) =>
+  req("POST", "/auth/register", { username, email, password });
+
+export const login = (email, password) =>
+  req("POST", "/auth/login", { email, password });
+
+export const forgotPassword = (email) =>
+  req("POST", "/auth/forgot-password", { email });
+
+export const resetPassword = (token, newPassword) =>
+  req("POST", "/auth/reset-password", { token, new_password: newPassword });
 
 export const getUser = (userID) =>
   req("GET", `/users/${userID}`);

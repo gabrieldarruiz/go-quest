@@ -1,9 +1,18 @@
 package handlers
 
 import (
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,11 +22,22 @@ import (
 )
 
 type Handler struct {
-	repo *repository.Repository
+	repo            *repository.Repository
+	resendAPIKey    string
+	resendFromEmail string
+	appBaseURL      string
 }
 
-func New(repo *repository.Repository) *Handler {
-	return &Handler{repo: repo}
+func New(repo *repository.Repository, resendAPIKey, resendFromEmail, appBaseURL string) *Handler {
+	if appBaseURL == "" {
+		appBaseURL = "http://localhost:5173"
+	}
+	return &Handler{
+		repo:            repo,
+		resendAPIKey:    resendAPIKey,
+		resendFromEmail: resendFromEmail,
+		appBaseURL:      strings.TrimRight(appBaseURL, "/"),
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -34,24 +54,209 @@ func parseUserID(r *http.Request) (uuid.UUID, error) {
 	return uuid.Parse(chi.URLParam(r, "userID"))
 }
 
+func secureToken(size int) (string, error) {
+	b := make([]byte, size)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func (h *Handler) sendPasswordResetEmail(toEmail, resetURL string) error {
+	if h.resendAPIKey == "" || h.resendFromEmail == "" {
+		return fmt.Errorf("resend is not configured (RESEND_API_KEY or RESEND_FROM_EMAIL missing)")
+	}
+
+	body := map[string]any{
+		"from":    h.resendFromEmail,
+		"to":      []string{toEmail},
+		"subject": "Recuperacao de senha - GO_QUEST",
+		"html": fmt.Sprintf(
+			`<p>Recebemos um pedido para redefinir sua senha no GO_QUEST.</p><p><a href="%s">Clique aqui para redefinir sua senha</a></p><p>Este link expira em 30 minutos.</p>`,
+			resetURL,
+		),
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+h.resendAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("resend returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // ─── Users ───────────────────────────────────────────────────────────────────
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" || body.Email == "" {
-		writeError(w, http.StatusBadRequest, "username and email are required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
 
-	user, err := h.repo.CreateUser(r.Context(), body.Username, body.Email)
+	body.Username = strings.TrimSpace(body.Username)
+	body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+	if body.Username == "" || body.Email == "" || body.Password == "" {
+		writeError(w, http.StatusBadRequest, "username, email and password are required")
+		return
+	}
+	if len(body.Password) < 6 {
+		writeError(w, http.StatusBadRequest, "password must have at least 6 characters")
+		return
+	}
+
+	user, err := h.repo.CreateUser(r.Context(), body.Username, body.Email, body.Password)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+	if body.Email == "" || body.Password == "" {
+		writeError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+
+	user, err := h.repo.AuthenticateUser(r.Context(), body.Email, body.Password)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid email or password")
+		return
+	}
+
+	summary, err := h.repo.GetUserSummary(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load user summary")
+		return
+	}
+
+	if err := h.repo.UpdateStreak(r.Context(), user.ID); err != nil {
+		_ = err
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user_id":               user.ID,
+		"username":              summary.Username,
+		"total_xp":              summary.TotalXP,
+		"current_level":         summary.CurrentLevel,
+		"streak_days":           summary.StreakDays,
+		"achievements_unlocked": summary.AchievementsUnlocked,
+	})
+}
+
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	email := strings.TrimSpace(strings.ToLower(body.Email))
+	if email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	// Always return success-like response to avoid account enumeration.
+	const genericMessage = "if the email exists, a reset link has been sent"
+	user, err := h.repo.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
+		return
+	}
+
+	token, err := secureToken(32)
+	if err != nil {
+		log.Printf("failed to generate reset token: %v", err)
+		writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
+		return
+	}
+
+	tokenHash := hashToken(token)
+	expiresAt := time.Now().Add(30 * time.Minute)
+	if err := h.repo.CreatePasswordResetToken(r.Context(), user.ID, tokenHash, expiresAt); err != nil {
+		log.Printf("failed to persist reset token for user %s: %v", user.ID, err)
+		writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
+		return
+	}
+
+	resetURL := fmt.Sprintf("%s/#/reset-password?token=%s", h.appBaseURL, url.QueryEscape(token))
+	if err := h.sendPasswordResetEmail(user.Email, resetURL); err != nil {
+		log.Printf("failed to send reset email to %s: %v", user.Email, err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": genericMessage})
+}
+
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	token := strings.TrimSpace(body.Token)
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+	if len(body.NewPassword) < 6 {
+		writeError(w, http.StatusBadRequest, "password must have at least 6 characters")
+		return
+	}
+
+	if err := h.repo.ResetPasswordByToken(r.Context(), hashToken(token), body.NewPassword); err != nil {
+		if err == repository.ErrInvalidResetToken {
+			writeError(w, http.StatusBadRequest, "invalid or expired token")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to reset password")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
 }
 
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {

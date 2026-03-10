@@ -41,7 +41,12 @@ func main() {
 	}
 
 	repo := repository.New(pool)
-	h := handlers.New(repo)
+	h := handlers.New(
+		repo,
+		os.Getenv("RESEND_API_KEY"),
+		os.Getenv("RESEND_FROM_EMAIL"),
+		os.Getenv("APP_BASE_URL"),
+	)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -56,6 +61,13 @@ func main() {
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", h.CreateUser)
+			r.Post("/login", h.Login)
+			r.Post("/forgot-password", h.ForgotPassword)
+			r.Post("/reset-password", h.ResetPassword)
+		})
+
 		r.Route("/users", func(r chi.Router) {
 			r.Post("/", h.CreateUser)
 			r.Route("/{userID}", func(r chi.Router) {
@@ -85,4 +97,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-

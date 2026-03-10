@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -16,19 +17,21 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
+var ErrInvalidResetToken = errors.New("invalid or expired reset token")
+
 func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
-func (r *Repository) CreateUser(ctx context.Context, username, email string) (*models.User, error) {
+func (r *Repository) CreateUser(ctx context.Context, username, email, password string) (*models.User, error) {
 	var u models.User
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO users (username, email)
-		VALUES ($1, $2)
+		INSERT INTO users (username, email, password_hash)
+		VALUES ($1, $2, crypt($3, gen_salt('bf')))
 		RETURNING id, username, email, created_at, updated_at
-	`, username, email).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	`, username, email, password).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
@@ -52,6 +55,100 @@ func (r *Repository) GetUser(ctx context.Context, userID uuid.UUID) (*models.Use
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 	return &u, nil
+}
+
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	var u models.User
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, username, email, created_at, updated_at
+		FROM users WHERE email = $1
+	`, email).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get user by email: %w", err)
+	}
+	return &u, nil
+}
+
+func (r *Repository) AuthenticateUser(ctx context.Context, email, password string) (*models.User, error) {
+	var u models.User
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, username, email, created_at, updated_at
+		FROM users
+		WHERE email = $1
+		  AND password_hash = crypt($2, password_hash)
+	`, email, password).Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("authenticate user: %w", err)
+	}
+	return &u, nil
+}
+
+func (r *Repository) CreatePasswordResetToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE password_reset_tokens
+		SET used_at = NOW()
+		WHERE user_id = $1 AND used_at IS NULL
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("invalidate previous reset tokens: %w", err)
+	}
+
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, tokenHash, expiresAt)
+	if err != nil {
+		return fmt.Errorf("create password reset token: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) ResetPasswordByToken(ctx context.Context, tokenHash, newPassword string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var tokenID uuid.UUID
+	var userID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		SELECT id, user_id
+		FROM password_reset_tokens
+		WHERE token_hash = $1
+		  AND used_at IS NULL
+		  AND expires_at > NOW()
+		ORDER BY created_at DESC
+		LIMIT 1
+		FOR UPDATE
+	`, tokenHash).Scan(&tokenID, &userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidResetToken
+		}
+		return fmt.Errorf("load reset token: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE users
+		SET password_hash = crypt($2, gen_salt('bf'))
+		WHERE id = $1
+	`, userID, newPassword); err != nil {
+		return fmt.Errorf("update user password: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE password_reset_tokens
+		SET used_at = NOW()
+		WHERE id = $1
+	`, tokenID); err != nil {
+		return fmt.Errorf("mark reset token as used: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
 }
 
 // ─── Progress ────────────────────────────────────────────────────────────────
