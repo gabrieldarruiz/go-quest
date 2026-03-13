@@ -77,3 +77,46 @@ type UserSummary struct {
 	AchievementsUnlocked int          `json:"achievements_unlocked"`
 	Progress             UserProgress `json:"progress"`
 }
+
+type GoalTemplate struct {
+	ID         int    `json:"id"`
+	Title      string `json:"title"`
+	Desc       string `json:"description"`
+	Category   string `json:"category"`
+	MinLevel   int    `json:"min_level"`
+	MaxLevel   int    `json:"max_level"`
+	XPReward   int    `json:"xp_reward"`
+	Difficulty int    `json:"difficulty"`
+}
+
+type DailyGoalFull struct {
+	GoalIndex   int          `json:"goal_index"`
+	Completed   bool         `json:"completed"`
+	CompletedAt *time.Time   `json:"completed_at,omitempty"`
+	Template    GoalTemplate `json:"template"`
+}
+
+type Partnership struct {
+	ID              uuid.UUID  `json:"id"`
+	RequesterID     uuid.UUID  `json:"requester_id"`
+	RequesterName   string     `json:"requester_name"`
+	PartnerID       uuid.UUID  `json:"partner_id"`
+	PartnerName     string     `json:"partner_name"`
+	Status          string     `json:"status"`
+	StreakDays      int        `json:"streak_days"`
+	LastBothDate    *time.Time `json:"last_both_date,omitempty"`
+	SavesRemaining  int        `json:"saves_remaining"`
+	SavesResetDate  *time.Time `json:"saves_reset_date,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	MyCheckinToday  bool       `json:"my_checkin_today"`
+	PartnerCheckin  bool       `json:"partner_checkin_today"`
+}
+
+type LeaderboardEntry struct {
+	Rank                 int    `json:"rank"`
+	Username             string `json:"username"`
+	TotalXP              int    `json:"total_xp"`
+	CurrentLevel         int    `json:"current_level"`
+	StreakDays           int    `json:"streak_days"`
+	AchievementsUnlocked int    `json:"achievements_unlocked"`
+}

@@ -40,6 +40,10 @@ func main() {
 		log.Printf("warning: failed to seed achievements: %v", err)
 	}
 
+	if err := db.SeedGoalTemplates(context.Background(), pool); err != nil {
+		log.Printf("warning: failed to seed goal templates: %v", err)
+	}
+
 	repo := repository.New(pool)
 	h := handlers.New(
 		repo,
@@ -92,6 +96,18 @@ func main() {
 		})
 
 		r.Get("/achievements", h.GetAllAchievements)
+
+		r.Get("/leaderboard", h.GetLeaderboard)
+
+		r.Route("/users/{userID}/partnerships", func(r chi.Router) {
+			r.Post("/", h.CreatePartnership)
+			r.Get("/", h.GetUserPartnerships)
+			r.Get("/{partnershipID}", h.GetPartnership)
+			r.Patch("/{partnershipID}", h.RespondPartnership)
+			r.Delete("/{partnershipID}", h.CancelPartnership)
+			r.Post("/{partnershipID}/checkin", h.PartnershipCheckin)
+			r.Post("/{partnershipID}/save", h.SavePartner)
+		})
 	})
 
 	port := os.Getenv("PORT")

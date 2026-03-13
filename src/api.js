@@ -49,11 +49,36 @@ export const removeAchievement = (userID, achievementID) =>
 export const getDailyGoals = (userID) =>
   req("GET", `/users/${userID}/daily-goals`);
 
-export const completeGoal = (userID, goalIndex) =>
-  req("POST", `/users/${userID}/daily-goals/${goalIndex}`);
+export const completeGoal = (userID, goalIndex, templateID, xpReward) =>
+  req("POST", `/users/${userID}/daily-goals/${goalIndex}`, { template_id: templateID, xp_reward: xpReward });
 
 export const uncompleteGoal = (userID, goalIndex) =>
   req("DELETE", `/users/${userID}/daily-goals/${goalIndex}`);
+
+// ─── Partnerships ─────────────────────────────────────────────────────────────
+
+export const createPartnership = (userID, partnerID) =>
+  req("POST", `/users/${userID}/partnerships`, { partner_id: partnerID });
+
+export const getUserPartnerships = (userID) =>
+  req("GET", `/users/${userID}/partnerships`);
+
+export const respondPartnership = (userID, partnershipID, accept) =>
+  req("PATCH", `/users/${userID}/partnerships/${partnershipID}`, { accept });
+
+export const cancelPartnership = (userID, partnershipID) =>
+  req("DELETE", `/users/${userID}/partnerships/${partnershipID}`);
+
+export const partnershipCheckin = (userID, partnershipID) =>
+  req("POST", `/users/${userID}/partnerships/${partnershipID}/checkin`);
+
+export const savePartner = (userID, partnershipID) =>
+  req("POST", `/users/${userID}/partnerships/${partnershipID}/save`);
+
+// ─── Leaderboard ─────────────────────────────────────────────────────────────
+
+export const getLeaderboard = (sort = "xp") =>
+  req("GET", `/leaderboard?sort=${sort}`);
 
 // ─── Pomodoro ─────────────────────────────────────────────────────────────────
 

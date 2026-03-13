@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/darraos/go-quest-backend/internal/models"
 	"github.com/darraos/go-quest-backend/internal/repository"
 )
 
@@ -389,10 +390,7 @@ func (h *Handler) GetDailyGoals(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if goals == nil {
-		goals = []int{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"completed": goals})
+	writeJSON(w, http.StatusOK, map[string]any{"goals": goals})
 }
 
 func (h *Handler) CompleteGoal(w http.ResponseWriter, r *http.Request) {
@@ -408,7 +406,13 @@ func (h *Handler) CompleteGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.CompleteGoal(r.Context(), userID, idx); err != nil {
+	var body struct {
+		TemplateID int `json:"template_id"`
+		XPReward   int `json:"xp_reward"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	if err := h.repo.CompleteGoal(r.Context(), userID, idx, body.TemplateID, body.XPReward); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -433,6 +437,189 @@ func (h *Handler) UncompleteGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"goal_index": idx, "completed": false})
+}
+
+// ─── Partnerships ─────────────────────────────────────────────────────────────
+
+func (h *Handler) CreatePartnership(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	var body struct {
+		PartnerID string `json:"partner_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	partnerID, err := uuid.Parse(body.PartnerID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid partner_id")
+		return
+	}
+	if partnerID == userID {
+		writeError(w, http.StatusBadRequest, "cannot partner with yourself")
+		return
+	}
+
+	p, err := h.repo.CreatePartnership(r.Context(), userID, partnerID)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (h *Handler) GetUserPartnerships(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	partnerships, err := h.repo.GetUserPartnerships(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if partnerships == nil {
+		partnerships = []models.Partnership{}
+	}
+	writeJSON(w, http.StatusOK, partnerships)
+}
+
+func (h *Handler) GetPartnership(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	partnershipID, err := uuid.Parse(chi.URLParam(r, "partnershipID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid partnership id")
+		return
+	}
+
+	p, err := h.repo.GetPartnership(r.Context(), partnershipID, userID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (h *Handler) RespondPartnership(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	partnershipID, err := uuid.Parse(chi.URLParam(r, "partnershipID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid partnership id")
+		return
+	}
+
+	var body struct {
+		Accept bool `json:"accept"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	p, err := h.repo.RespondPartnership(r.Context(), partnershipID, userID, body.Accept)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (h *Handler) CancelPartnership(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	partnershipID, err := uuid.Parse(chi.URLParam(r, "partnershipID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid partnership id")
+		return
+	}
+
+	if err := h.repo.CancelPartnership(r.Context(), partnershipID, userID); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
+}
+
+func (h *Handler) PartnershipCheckin(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	partnershipID, err := uuid.Parse(chi.URLParam(r, "partnershipID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid partnership id")
+		return
+	}
+
+	p, err := h.repo.PartnershipCheckin(r.Context(), partnershipID, userID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (h *Handler) SavePartner(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	partnershipID, err := uuid.Parse(chi.URLParam(r, "partnershipID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid partnership id")
+		return
+	}
+
+	p, err := h.repo.SavePartner(r.Context(), partnershipID, userID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+// ─── Leaderboard ─────────────────────────────────────────────────────────────
+
+func (h *Handler) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy == "" {
+		sortBy = "xp"
+	}
+
+	entries, err := h.repo.GetLeaderboard(r.Context(), sortBy)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if entries == nil {
+		entries = []models.LeaderboardEntry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"leaderboard": entries})
 }
 
 // ─── Pomodoro ─────────────────────────────────────────────────────────────────

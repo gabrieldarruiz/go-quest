@@ -645,13 +645,9 @@ function AuthRequiredPage() {
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 
-const DAILY_GOALS = [
-  "Escrever código Go por 30+ minutos",
-  "Aprender ou revisar um conceito",
-  "Ler documentação ou código alheio",
-  "Resolver um exercício prático",
-  "Fazer um commit no projeto pessoal",
-];
+const DIFF_LABEL = ["", "fácil", "médio", "difícil"];
+const DIFF_COLOR = ["", "#00ff88", "#ffcc00", "#ff6b35"];
+const CAT_ICON = { pomodoro: "⏱", study: "📖", practice: "⌨", review: "🔍", challenge: "⚡" };
 
 export default function GoQuest() {
   const [route, setRoute] = useState(routeFromHash);
@@ -661,7 +657,13 @@ export default function GoQuest() {
   const [userID, setUserID] = useState(null);
   const [totalXP, setTotalXP] = useState(0);
   const [unlocked, setUnlocked] = useState(new Set());
+  const [dailyGoals, setDailyGoals] = useState([]);
   const [todayDone, setTodayDone] = useState(new Set());
+  const [partnerships, setPartnerships] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [lbSort, setLbSort] = useState("xp");
+  const [newPartnerID, setNewPartnerID] = useState("");
+  const [partnerError, setPartnerError] = useState("");
   const [tab, setTab] = useState("hoje");
   const [time, setTime] = useState(new Date());
   const [pulse, setPulse] = useState(false);
@@ -710,8 +712,16 @@ export default function GoQuest() {
 
       // load today's goals
       try {
-        const goals = await api.getDailyGoals(uid);
-        setTodayDone(new Set(goals.completed || []));
+        const data = await api.getDailyGoals(uid);
+        const goals = data.goals || [];
+        setDailyGoals(goals);
+        setTodayDone(new Set(goals.filter(g => g.completed).map(g => g.goal_index)));
+      } catch {}
+
+      // load partnerships
+      try {
+        const ps = await api.getUserPartnerships(uid);
+        setPartnerships(ps || []);
       } catch {}
 
       setLoading(false);
@@ -762,6 +772,7 @@ export default function GoQuest() {
       const session = await api.login(email, password);
       if (!session?.user_id) throw new Error("Login sem user_id retornado.");
       localStorage.setItem("goquest_user_id", session.user_id);
+      if (session.username) localStorage.setItem("goquest_username", session.username);
       setUserID(session.user_id);
       if (typeof session.total_xp === "number") {
         setTotalXP(session.total_xp);
@@ -776,10 +787,14 @@ export default function GoQuest() {
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("goquest_user_id");
+    localStorage.removeItem("goquest_username");
     setUserID(null);
     setTotalXP(0);
     setUnlocked(new Set());
+    setDailyGoals([]);
     setTodayDone(new Set());
+    setPartnerships([]);
+    setLeaderboard([]);
     goTo("/login");
   }, [goTo]);
 
@@ -852,27 +867,30 @@ export default function GoQuest() {
 
   const toggleG = useCallback(async (i) => {
     if (!userID) return;
+    const goal = dailyGoals[i];
     if (todayDone.has(i)) {
       setTodayDone(prev => { const n = new Set(prev); n.delete(i); return n; });
       try {
         await api.uncompleteGoal(userID, i);
+        if (goal?.template?.xp_reward) setTotalXP(prev => Math.max(0, prev - goal.template.xp_reward));
       } catch {
         setTodayDone(prev => new Set([...prev, i]));
       }
     } else {
       setTodayDone(prev => new Set([...prev, i]));
       try {
-        await api.completeGoal(userID, i);
+        await api.completeGoal(userID, i, goal?.template?.id, goal?.template?.xp_reward || 0);
+        if (goal?.template?.xp_reward) setTotalXP(prev => prev + goal.template.xp_reward);
       } catch {
         setTodayDone(prev => { const n = new Set(prev); n.delete(i); return n; });
       }
     }
-  }, [userID, todayDone]);
+  }, [userID, todayDone, dailyGoals]);
 
   const timeStr = time.toTimeString().slice(0, 8);
   const dateStr = time.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).toUpperCase();
 
-  const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
+  const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["parcerias","// PARCERIAS"],["ranking","// RANKING"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
   const resetToken = hashSearchParams().get("token") || "";
 
   if (route === "/") {
@@ -992,14 +1010,31 @@ export default function GoQuest() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16 }}>
               <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 14 }}>// METAS DO DIA</div>
-              {DAILY_GOALS.map((goal, i) => (
-                <div key={i} className="row" onClick={() => toggleG(i)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 3, marginBottom: 4, background: todayDone.has(i) ? "#a855f711" : "transparent", border: `1px solid ${todayDone.has(i) ? "#a855f733" : "transparent"}`, cursor: "pointer", transition: "all 0.15s", userSelect: "none" }}>
-                  <span style={{ fontSize: 13, color: todayDone.has(i) ? "#a855f7" : "#2a2a3e", flexShrink: 0 }}>{todayDone.has(i) ? "◉" : "○"}</span>
-                  <span style={{ fontSize: 13, color: todayDone.has(i) ? "#c0a0ff" : "#444", textDecoration: todayDone.has(i) ? "line-through" : "none" }}>{goal}</span>
-                </div>
-              ))}
+              {dailyGoals.length === 0
+                ? <div style={{ fontSize: 13, color: "#444", padding: "8px 0" }}>Carregando metas...</div>
+                : dailyGoals.map((g) => {
+                  const done = todayDone.has(g.goal_index);
+                  const t = g.template || {};
+                  return (
+                    <div key={g.goal_index} className="row" onClick={() => toggleG(g.goal_index)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 10px", borderRadius: 3, marginBottom: 4, background: done ? "#a855f711" : "transparent", border: `1px solid ${done ? "#a855f733" : "transparent"}`, cursor: "pointer", transition: "all 0.15s", userSelect: "none" }}>
+                      <span style={{ fontSize: 13, color: done ? "#a855f7" : "#2a2a3e", flexShrink: 0, paddingTop: 1 }}>{done ? "◉" : "○"}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontSize: 12 }}>{CAT_ICON[t.category] || "▸"}</span>
+                          <span style={{ fontSize: 13, color: done ? "#c0a0ff" : "#aaa", textDecoration: done ? "line-through" : "none" }}>{t.title}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#555" }}>{t.description}</div>
+                      </div>
+                      <div style={{ flexShrink: 0, textAlign: "right" }}>
+                        <div style={{ fontSize: 11, color: DIFF_COLOR[t.difficulty] || "#666" }}>{DIFF_LABEL[t.difficulty]}</div>
+                        <div style={{ fontSize: 11, color: done ? "#a855f7" : "#2a2a3e" }}>+{t.xp_reward}xp</div>
+                      </div>
+                    </div>
+                  );
+                })
+              }
               <div style={{ marginTop: 12 }}>
-                <ProgressBar value={todayDone.size} max={5} color="#a855f7" />
+                <ProgressBar value={todayDone.size} max={Math.max(dailyGoals.length, 5)} color="#a855f7" />
               </div>
             </div>
 
@@ -1080,6 +1115,190 @@ export default function GoQuest() {
         )}
 
         {tab === "timer" && <PomodoroTab userID={userID} />}
+
+        {/* ── PARCERIAS ── */}
+        {tab === "parcerias" && (
+          <div style={{ maxWidth: 680 }}>
+            {/* Convidar parceiro */}
+            <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// CONVIDAR PARCEIRO DE STREAK</div>
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>Cole o ID do usuário parceiro para criar uma streak em dupla. Ambos precisam fazer check-in diário para manter a streak.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={newPartnerID}
+                  onChange={e => setNewPartnerID(e.target.value)}
+                  placeholder="UUID do parceiro..."
+                  style={{ flex: 1, background: "#111", border: "1px solid #2a2a3e", borderRadius: 3, padding: "8px 10px", color: "#f0f0ff", fontSize: 12, outline: "none" }}
+                />
+                <button
+                  onClick={async () => {
+                    setPartnerError("");
+                    if (!newPartnerID.trim()) return;
+                    try {
+                      const p = await api.createPartnership(userID, newPartnerID.trim());
+                      setPartnerships(prev => [p, ...prev]);
+                      setNewPartnerID("");
+                    } catch (e) { setPartnerError(e.message); }
+                  }}
+                  style={{ background: "#a855f722", border: "1px solid #a855f755", borderRadius: 3, color: "#c0a0ff", padding: "8px 16px", fontSize: 12, cursor: "pointer" }}
+                >Convidar</button>
+              </div>
+              {partnerError && <div style={{ fontSize: 12, color: "#ff6b6b", marginTop: 8 }}>{partnerError}</div>}
+            </div>
+
+            {/* Lista de parcerias */}
+            {partnerships.length === 0
+              ? <div style={{ fontSize: 13, color: "#444", padding: 8 }}>Nenhuma parceria ainda.</div>
+              : partnerships.map(p => {
+                const isPending = p.status === "pending";
+                const isRequester = p.requester_id === userID;
+                const partnerName = isRequester ? p.partner_name : p.requester_name;
+                return (
+                  <div key={p.id} style={{ background: "#0a0a0f", border: `1px solid ${p.status === "active" ? "#00ff8833" : "#1a1a2e"}`, borderRadius: 4, padding: 16, marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: "#f0f0ff", marginBottom: 3 }}>
+                          <span style={{ color: "#555" }}>parceiro: </span>{partnerName}
+                        </div>
+                        <div style={{ fontSize: 11, color: isPending ? "#ffcc00" : p.status === "active" ? "#00ff88" : "#ff6b6b" }}>
+                          {isPending ? (isRequester ? "aguardando aceite" : "convite recebido") : p.status}
+                        </div>
+                      </div>
+                      {p.status === "active" && (
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 22, color: "#ffcc00" }}>🔥 {p.streak_days}</div>
+                          <div style={{ fontSize: 10, color: "#666" }}>dias juntos</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {p.status === "active" && (
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <div style={{ flex: 1, background: p.my_checkin_today ? "#00ff8811" : "#111", border: `1px solid ${p.my_checkin_today ? "#00ff8844" : "#2a2a3e"}`, borderRadius: 3, padding: "6px 10px", fontSize: 11, color: p.my_checkin_today ? "#00ff88" : "#555", textAlign: "center" }}>
+                          você {p.my_checkin_today ? "✓" : "—"}
+                        </div>
+                        <div style={{ flex: 1, background: p.partner_checkin_today ? "#00ff8811" : "#111", border: `1px solid ${p.partner_checkin_today ? "#00ff8844" : "#2a2a3e"}`, borderRadius: 3, padding: "6px 10px", fontSize: 11, color: p.partner_checkin_today ? "#00ff88" : "#555", textAlign: "center" }}>
+                          {partnerName} {p.partner_checkin_today ? "✓" : "—"}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {p.status === "active" && !p.my_checkin_today && (
+                        <button onClick={async () => {
+                          try {
+                            const updated = await api.partnershipCheckin(userID, p.id);
+                            setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
+                          } catch {}
+                        }} style={{ background: "#00ff8822", border: "1px solid #00ff8855", borderRadius: 3, color: "#00ff88", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
+                          Check-in hoje
+                        </button>
+                      )}
+                      {p.status === "active" && p.my_checkin_today && !p.partner_checkin_today && p.saves_remaining > 0 && (
+                        <button onClick={async () => {
+                          try {
+                            const updated = await api.savePartner(userID, p.id);
+                            setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
+                          } catch {}
+                        }} style={{ background: "#ffcc0022", border: "1px solid #ffcc0055", borderRadius: 3, color: "#ffcc00", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
+                          Salvar parceiro ({p.saves_remaining} restante)
+                        </button>
+                      )}
+                      {isPending && !isRequester && (
+                        <>
+                          <button onClick={async () => {
+                            try {
+                              const updated = await api.respondPartnership(userID, p.id, true);
+                              setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
+                            } catch {}
+                          }} style={{ background: "#00ff8822", border: "1px solid #00ff8855", borderRadius: 3, color: "#00ff88", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
+                            Aceitar
+                          </button>
+                          <button onClick={async () => {
+                            try {
+                              const updated = await api.respondPartnership(userID, p.id, false);
+                              setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
+                            } catch {}
+                          }} style={{ background: "#ff6b3522", border: "1px solid #ff6b3555", borderRadius: 3, color: "#ff6b35", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
+                            Recusar
+                          </button>
+                        </>
+                      )}
+                      <button onClick={async () => {
+                        try {
+                          await api.cancelPartnership(userID, p.id);
+                          setPartnerships(prev => prev.filter(x => x.id !== p.id));
+                        } catch {}
+                      }} style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#555", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
+
+        {/* ── RANKING ── */}
+        {tab === "ranking" && (
+          <div style={{ maxWidth: 680 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {[["xp","XP Total"],["streak","Streak"],["level","Nível"]].map(([s, label]) => (
+                <button key={s} onClick={async () => {
+                  setLbSort(s);
+                  try {
+                    const data = await api.getLeaderboard(s);
+                    setLeaderboard(data.leaderboard || []);
+                  } catch {}
+                }} style={{ background: lbSort === s ? "#00cfff22" : "transparent", border: `1px solid ${lbSort === s ? "#00cfff55" : "#2a2a3e"}`, borderRadius: 3, color: lbSort === s ? "#00cfff" : "#555", padding: "6px 14px", fontSize: 11, cursor: "pointer" }}>
+                  {label}
+                </button>
+              ))}
+              <button onClick={async () => {
+                try {
+                  const data = await api.getLeaderboard(lbSort);
+                  setLeaderboard(data.leaderboard || []);
+                } catch {}
+              }} style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#555", padding: "6px 14px", fontSize: 11, cursor: "pointer", marginLeft: "auto" }}>
+                ↺ Atualizar
+              </button>
+            </div>
+
+            {leaderboard.length === 0
+              ? (
+                <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 24, textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: "#444", marginBottom: 8 }}>Ranking não carregado</div>
+                  <button onClick={async () => {
+                    try {
+                      const data = await api.getLeaderboard(lbSort);
+                      setLeaderboard(data.leaderboard || []);
+                    } catch {}
+                  }} style={{ background: "#00cfff22", border: "1px solid #00cfff55", borderRadius: 3, color: "#00cfff", padding: "8px 20px", fontSize: 12, cursor: "pointer" }}>
+                    Carregar ranking
+                  </button>
+                </div>
+              )
+              : leaderboard.map((e, idx) => {
+                const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${e.rank}`;
+                const isMe = e.username === localStorage.getItem("goquest_username");
+                return (
+                  <div key={e.rank} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 6, background: isMe ? "#00cfff08" : "#0a0a0f", border: `1px solid ${isMe ? "#00cfff33" : "#1a1a2e"}`, borderRadius: 4 }}>
+                    <div style={{ fontSize: idx < 3 ? 18 : 14, width: 32, textAlign: "center", color: "#666", flexShrink: 0 }}>{medal}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: isMe ? "#00cfff" : "#f0f0ff" }}>{e.username}{isMe ? " (você)" : ""}</div>
+                      <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>nível {e.current_level} · {e.achievements_unlocked} conquistas</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 13, color: "#ffcc00" }}>{e.total_xp} XP</div>
+                      <div style={{ fontSize: 11, color: "#ff6b35" }}>🔥 {e.streak_days} dias</div>
+                    </div>
+                  </div>
+                );
+              })
+            }
+          </div>
+        )}
 
         {/* ── FERRAMENTAS ── */}
         {tab === "ferramentas" && (
