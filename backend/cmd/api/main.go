@@ -85,6 +85,7 @@ func main() {
 				r.Get("/", h.GetUser)
 				r.Get("/progress", h.GetProgress)
 				r.Get("/friends", h.GetUserFriends)
+				r.Post("/friends/{friendID}/donate-save", h.DonateSave)
 				r.Get("/achievements", h.GetUserAchievements)
 				r.Post("/achievements/{achievementID}", h.UnlockAchievement)
 				r.Delete("/achievements/{achievementID}", h.RemoveAchievement)

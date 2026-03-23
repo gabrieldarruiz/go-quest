@@ -20,6 +20,8 @@ type UserProgress struct {
 	TotalXP       int        `json:"total_xp"`
 	CurrentLevel  int        `json:"current_level"`
 	StreakDays    int        `json:"streak_days"`
+	SaveBalance   int        `json:"save_balance"`
+	SaveMilestone int        `json:"-"`
 	LastVisitDate *time.Time `json:"last_visit_date,omitempty"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
@@ -74,6 +76,7 @@ type UserSummary struct {
 	TotalXP              int          `json:"total_xp"`
 	CurrentLevel         int          `json:"current_level"`
 	StreakDays           int          `json:"streak_days"`
+	SaveBalance          int          `json:"save_balance"`
 	AchievementsUnlocked int          `json:"achievements_unlocked"`
 	Progress             UserProgress `json:"progress"`
 }
@@ -107,6 +110,7 @@ type Partnership struct {
 	LastBothDate   *time.Time `json:"last_both_date,omitempty"`
 	SavesRemaining int        `json:"saves_remaining"`
 	SavesResetDate *time.Time `json:"saves_reset_date,omitempty"`
+	MySaveBalance  int        `json:"my_save_balance"`
 	CreatedAt      time.Time  `json:"created_at"`
 	MyCheckinToday bool       `json:"my_checkin_today"`
 	PartnerCheckin bool       `json:"partner_checkin_today"`
@@ -116,6 +120,7 @@ type Friend struct {
 	UserID                uuid.UUID  `json:"user_id"`
 	Username              string     `json:"username"`
 	FriendsSince          time.Time  `json:"friends_since"`
+	SaveBalance           int        `json:"save_balance"`
 	HasActivePartnership  bool       `json:"has_active_partnership"`
 	PartnershipID         *uuid.UUID `json:"partnership_id,omitempty"`
 	PartnershipStreakDays int        `json:"partnership_streak_days"`

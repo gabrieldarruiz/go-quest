@@ -975,6 +975,7 @@ export default function GoQuest() {
   const timeStr = time.toTimeString().slice(0, 8);
   const dateStr = time.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).toUpperCase();
   const currentStreak = summary?.streak_days || 0;
+  const mySaveBalance = summary?.save_balance || 0;
   const weekLabel = (() => {
     const now = new Date();
     const start = new Date(now);
@@ -1085,6 +1086,7 @@ export default function GoQuest() {
             { label: "NÍVEL", value: currentLevel.id, sub: currentLevel.title, color: currentLevel.color },
             { label: "XP TOTAL", value: totalXP, sub: `${xpIn}/${xpNeed} próx.`, color: "#00cfff" },
             { label: "STREAK", value: currentStreak, sub: currentStreak > 0 ? `${currentStreak} semanas seguidas` : "comece nesta semana", color: "#ff6b35" },
+            { label: "SAVES", value: mySaveBalance, sub: mySaveBalance > 0 ? "guardados no inventario" : "ganhe 1 a cada 4 semanas", color: "#ffcc00" },
             { label: "AMIGOS", value: friends.length, sub: friends.length > 0 ? "rede ativa" : "sem conexões ainda", color: "#a855f7" },
             { label: "CONQUISTAS", value: `${unlocked.size}/${ACHIEVEMENTS.length}`, sub: `${Math.round(unlocked.size / ACHIEVEMENTS.length * 100)}% completo`, color: "#ff2d78" },
             { label: "MARCOS", value: MILESTONES.filter(m => unlocked.has(m.trigger)).length, sub: `de ${MILESTONES.length} especiais`, color: "#ffcc00" },
@@ -1228,6 +1230,17 @@ export default function GoQuest() {
         {/* ── PARCERIAS ── */}
         {tab === "parcerias" && (
           <div style={{ maxWidth: 680 }}>
+            <div style={{ background: "#0a0a0f", border: "1px solid #ffcc0033", borderRadius: 4, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#ffcc00", letterSpacing: 2, marginBottom: 10 }}>// SAVES DE STREAK</div>
+              <div style={{ fontSize: 12, color: "#bbb", lineHeight: 1.7 }}>
+                A cada 4 semanas consecutivas de streak pessoal, você ganha 1 save. Ele fica no seu inventário, pode acumular, ser usado na sua parceria ativa ou doado para um amigo.
+              </div>
+              <div style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 10, background: "#111", border: "1px solid #2a2a3e", borderRadius: 4, padding: "8px 12px" }}>
+                <span style={{ fontSize: 11, color: "#666" }}>saldo atual</span>
+                <span style={{ fontSize: 15, color: "#ffcc00" }}>{mySaveBalance} save{mySaveBalance === 1 ? "" : "s"}</span>
+              </div>
+            </div>
+
             <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// BUSCAR USUARIO POR USERNAME</div>
               <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>Procure pelo username da pessoa e envie o convite de streak direto daqui. Se a parceria for aceita, voces viram amigos automaticamente.</div>
@@ -1313,7 +1326,7 @@ export default function GoQuest() {
 
             <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// AMIGOS</div>
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Todo aceite de parceria vira amizade automaticamente. Aqui voce ve sua rede e se existe streak ativa com cada pessoa.</div>
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Todo aceite de parceria vira amizade automaticamente. Aqui voce ve sua rede, o saldo de saves de cada amigo e pode doar 1 save quando quiser.</div>
               {friends.length === 0
                 ? <div style={{ fontSize: 13, color: "#444" }}>Nenhum amigo ainda.</div>
                 : (
@@ -1324,9 +1337,30 @@ export default function GoQuest() {
                         <div style={{ fontSize: 11, color: "#666", marginBottom: 8 }}>
                           amigo desde {new Date(f.friends_since).toLocaleDateString("pt-BR")}
                         </div>
-                        <div style={{ fontSize: 11, color: f.has_active_partnership ? "#00ff88" : "#555" }}>
+                        <div style={{ fontSize: 11, color: f.has_active_partnership ? "#00ff88" : "#555", marginBottom: 8 }}>
                           {f.has_active_partnership ? `streak ativa: ${f.partnership_streak_days} semanas` : "sem streak ativa agora"}
                         </div>
+                        <div style={{ fontSize: 11, color: "#ffcc00", marginBottom: 10 }}>
+                          saves guardados: {f.save_balance}
+                        </div>
+                        <button
+                          disabled={mySaveBalance <= 0}
+                          onClick={async () => {
+                            setPartnerError("");
+                            try {
+                              await api.donateSave(userID, f.user_id);
+                              await loadSummary(userID);
+                              await loadFriends(userID);
+                              await loadPartnerships(userID);
+                              showNotif({ icon: "🎁", title: "Save doado", desc: `1 save enviado para ${f.username}` });
+                            } catch (e) {
+                              setPartnerError(e.message);
+                            }
+                          }}
+                          style={{ background: mySaveBalance > 0 ? "#ffcc0022" : "transparent", border: `1px solid ${mySaveBalance > 0 ? "#ffcc0055" : "#2a2a3e"}`, borderRadius: 3, color: mySaveBalance > 0 ? "#ffcc00" : "#555", padding: "6px 12px", fontSize: 11, cursor: mySaveBalance > 0 ? "pointer" : "not-allowed" }}
+                        >
+                          Doar 1 save
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1379,6 +1413,7 @@ export default function GoQuest() {
                           try {
                             const updated = await api.partnershipCheckin(userID, p.id);
                             setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
+                            await loadSummary(userID);
                           } catch (err) {
                             void err;
                           }
@@ -1386,16 +1421,22 @@ export default function GoQuest() {
                           Check-in da semana
                         </button>
                       )}
-                      {p.status === "active" && p.my_checkin_today && !p.partner_checkin_today && p.saves_remaining > 0 && (
+                      {p.status === "active" && (!p.my_checkin_today || !p.partner_checkin_today) && p.my_save_balance > 0 && (
                         <button onClick={async () => {
                           try {
                             const updated = await api.savePartner(userID, p.id);
                             setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
+                            await loadSummary(userID);
+                            await loadFriends(userID);
                           } catch (err) {
-                            void err;
+                            setPartnerError(err.message || "Nao foi possivel usar um save.");
                           }
                         }} style={{ background: "#ffcc0022", border: "1px solid #ffcc0055", borderRadius: 3, color: "#ffcc00", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
-                          Salvar semana ({p.saves_remaining} restante)
+                          {!p.my_checkin_today && p.partner_checkin_today
+                            ? `Usar 1 save em mim (${p.my_save_balance})`
+                            : p.my_checkin_today && !p.partner_checkin_today
+                              ? `Usar 1 save em ${partnerName} (${p.my_save_balance})`
+                              : `Fechar semana com 1 save (${p.my_save_balance})`}
                         </button>
                       )}
                       {isPending && !isRequester && (
@@ -1479,6 +1520,10 @@ export default function GoQuest() {
               >
                 {lbLoading ? "..." : "↺ Atualizar"}
               </button>
+            </div>
+
+            <div style={{ fontSize: 11, color: "#666", marginBottom: 16 }}>
+              No ranking semanal, só conta o XP que continua válido. Se você marcar uma meta e depois desfizer, esse XP sai do ranking.
             </div>
 
             {lbLoading

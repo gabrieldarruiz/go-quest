@@ -61,6 +61,27 @@ func currentWeekStart(now time.Time) time.Time {
 	return start
 }
 
+func effectiveWeeklyStreak(streak int, lastActivity *time.Time, now time.Time) int {
+	if streak <= 0 || lastActivity == nil {
+		return 0
+	}
+
+	currentWeek := currentWeekStart(now)
+	prevWeek := currentWeek.AddDate(0, 0, -7)
+	lastWeek := currentWeekStart(lastActivity.UTC())
+	if lastWeek.Before(prevWeek) {
+		return 0
+	}
+	return streak
+}
+
+func saveMilestonesForStreak(streak int) int {
+	if streak <= 0 {
+		return 0
+	}
+	return streak / 4
+}
+
 func (r *Repository) recalcUserProgressFromAchievements(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 	var totalXP int
 	if err := tx.QueryRow(ctx, `
@@ -285,28 +306,39 @@ func (r *Repository) ResetPasswordByToken(ctx context.Context, tokenHash, newPas
 func (r *Repository) GetProgress(ctx context.Context, userID uuid.UUID) (*models.UserProgress, error) {
 	var p models.UserProgress
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, user_id, total_xp, current_level, streak_days, last_visit_date, updated_at
+		SELECT id, user_id, total_xp, current_level, streak_days, save_balance, last_visit_date, updated_at
 		FROM user_progress WHERE user_id = $1
-	`, userID).Scan(&p.ID, &p.UserID, &p.TotalXP, &p.CurrentLevel, &p.StreakDays, &p.LastVisitDate, &p.UpdatedAt)
+	`, userID).Scan(&p.ID, &p.UserID, &p.TotalXP, &p.CurrentLevel, &p.StreakDays, &p.SaveBalance, &p.LastVisitDate, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get progress: %w", err)
 	}
+	p.StreakDays = effectiveWeeklyStreak(p.StreakDays, p.LastVisitDate, time.Now())
 	return &p, nil
 }
 
 func (r *Repository) GetUserSummary(ctx context.Context, userID uuid.UUID) (*models.UserSummary, error) {
 	var s models.UserSummary
+	var lastVisit *time.Time
 	err := r.pool.QueryRow(ctx, `
-		SELECT u.username, up.total_xp, up.current_level, up.streak_days,
+		SELECT u.username, up.total_xp, up.current_level, up.streak_days, up.save_balance, up.last_visit_date,
 		       COUNT(ua.id) AS achievements_unlocked
 		FROM users u
 		JOIN user_progress up ON up.user_id = u.id
 		LEFT JOIN user_achievements ua ON ua.user_id = u.id
 		WHERE u.id = $1
-		GROUP BY u.username, up.total_xp, up.current_level, up.streak_days
-	`, userID).Scan(&s.Username, &s.TotalXP, &s.CurrentLevel, &s.StreakDays, &s.AchievementsUnlocked)
+		GROUP BY u.username, up.total_xp, up.current_level, up.streak_days, up.save_balance, up.last_visit_date
+	`, userID).Scan(&s.Username, &s.TotalXP, &s.CurrentLevel, &s.StreakDays, &s.SaveBalance, &lastVisit, &s.AchievementsUnlocked)
 	if err != nil {
 		return nil, fmt.Errorf("get summary: %w", err)
+	}
+	s.StreakDays = effectiveWeeklyStreak(s.StreakDays, lastVisit, time.Now())
+	s.Progress = models.UserProgress{
+		UserID:        userID,
+		TotalXP:       s.TotalXP,
+		CurrentLevel:  s.CurrentLevel,
+		StreakDays:    s.StreakDays,
+		SaveBalance:   s.SaveBalance,
+		LastVisitDate: lastVisit,
 	}
 	return &s, nil
 }
@@ -356,13 +388,21 @@ func (r *Repository) AddXP(ctx context.Context, userID uuid.UUID, xp int, source
 
 func (r *Repository) UpdateStreak(ctx context.Context, userID uuid.UUID) error {
 	var lastVisit *time.Time
-	err := r.pool.QueryRow(ctx, `SELECT last_visit_date FROM user_progress WHERE user_id = $1`, userID).Scan(&lastVisit)
+	var currentStreak int
+	var saveMilestone int
+	err := r.pool.QueryRow(ctx, `
+		SELECT streak_days, save_milestone, last_visit_date
+		FROM user_progress
+		WHERE user_id = $1
+	`, userID).Scan(&currentStreak, &saveMilestone, &lastVisit)
 	if err != nil {
 		return err
 	}
 
 	currentWeek := currentWeekStart(time.Now())
 	newStreak := 1
+	newSaveMilestone := 0
+	saveReward := 0
 
 	if lastVisit != nil {
 		lastWeek := currentWeekStart(lastVisit.UTC())
@@ -371,15 +411,24 @@ func (r *Repository) UpdateStreak(ctx context.Context, userID uuid.UUID) error {
 		case lastWeek.Equal(currentWeek):
 			return nil // already counted this week
 		case lastWeek.Equal(prevWeek):
-			var current int
-			r.pool.QueryRow(ctx, `SELECT streak_days FROM user_progress WHERE user_id = $1`, userID).Scan(&current)
-			newStreak = current + 1
+			newStreak = effectiveWeeklyStreak(currentStreak, lastVisit, time.Now()) + 1
+			newSaveMilestone = saveMilestone
 		}
 	}
 
+	if milestone := saveMilestonesForStreak(newStreak); milestone > newSaveMilestone {
+		saveReward = milestone - newSaveMilestone
+		newSaveMilestone = milestone
+	}
+
 	_, err = r.pool.Exec(ctx, `
-		UPDATE user_progress SET streak_days = $2, last_visit_date = $3 WHERE user_id = $1
-	`, userID, newStreak, currentWeek)
+		UPDATE user_progress
+		SET streak_days = $2,
+		    save_balance = save_balance + $3,
+		    save_milestone = $4,
+		    last_visit_date = $5
+		WHERE user_id = $1
+	`, userID, newStreak, saveReward, newSaveMilestone, currentWeek)
 	return err
 }
 
@@ -775,7 +824,9 @@ func (r *Repository) UncompleteGoal(ctx context.Context, userID uuid.UUID, goalI
 var ErrPartnershipNotFound = errors.New("partnership not found")
 var ErrPartnershipNotActive = errors.New("partnership is not active")
 var ErrAlreadyPartnered = errors.New("partnership already exists between these users")
-var ErrNoSavesRemaining = errors.New("no saves remaining this week")
+var ErrNoSavesRemaining = errors.New("no saves available")
+var ErrFriendshipNotFound = errors.New("friendship not found")
+var ErrCannotDonateToSelf = errors.New("cannot donate a save to yourself")
 
 func (r *Repository) CreatePartnership(ctx context.Context, requesterID, partnerID uuid.UUID) (*models.Partnership, error) {
 	var alreadyExists bool
@@ -885,14 +936,18 @@ func (r *Repository) GetUserFriends(ctx context.Context, userID uuid.UUID) ([]mo
 			CASE WHEN f.user_a_id = $1 THEN f.user_b_id ELSE f.user_a_id END AS friend_id,
 			u.username,
 			f.created_at,
+			up.save_balance,
 			sp.id IS NOT NULL AS has_active_partnership,
 			sp.id,
-			COALESCE(sp.streak_days, 0) AS partnership_streak_days
+			COALESCE(sp.streak_days, 0) AS partnership_streak_days,
+			sp.last_both_date
 		FROM friendships f
 		JOIN users u
 			ON u.id = CASE WHEN f.user_a_id = $1 THEN f.user_b_id ELSE f.user_a_id END
+		JOIN user_progress up
+			ON up.user_id = u.id
 		LEFT JOIN LATERAL (
-			SELECT id, streak_days
+			SELECT id, streak_days, last_both_date
 			FROM streak_partnerships
 			WHERE status = 'active'
 			  AND (
@@ -914,20 +969,86 @@ func (r *Repository) GetUserFriends(ctx context.Context, userID uuid.UUID) ([]mo
 	var friends []models.Friend
 	for rows.Next() {
 		var f models.Friend
+		var lastBothDate *time.Time
 		if err := rows.Scan(
 			&f.UserID,
 			&f.Username,
 			&f.FriendsSince,
+			&f.SaveBalance,
 			&f.HasActivePartnership,
 			&f.PartnershipID,
 			&f.PartnershipStreakDays,
+			&lastBothDate,
 		); err != nil {
 			return nil, fmt.Errorf("scan friend: %w", err)
 		}
+		f.PartnershipStreakDays = effectiveWeeklyStreak(f.PartnershipStreakDays, lastBothDate, time.Now())
 		friends = append(friends, f)
 	}
 
 	return friends, rows.Err()
+}
+
+func (r *Repository) DonateSave(ctx context.Context, fromUserID, toUserID uuid.UUID) error {
+	if fromUserID == toUserID {
+		return ErrCannotDonateToSelf
+	}
+
+	left, right := orderedUserPair(fromUserID, toUserID)
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var areFriends bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM friendships
+			WHERE user_a_id = $1 AND user_b_id = $2
+		)
+	`, left, right).Scan(&areFriends); err != nil {
+		return fmt.Errorf("check friendship: %w", err)
+	}
+	if !areFriends {
+		return ErrFriendshipNotFound
+	}
+
+	var saveBalance int
+	if err := tx.QueryRow(ctx, `
+		SELECT save_balance
+		FROM user_progress
+		WHERE user_id = $1
+		FOR UPDATE
+	`, fromUserID).Scan(&saveBalance); err != nil {
+		return fmt.Errorf("load donor save balance: %w", err)
+	}
+	if saveBalance <= 0 {
+		return ErrNoSavesRemaining
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE user_progress
+		SET save_balance = save_balance - 1
+		WHERE user_id = $1
+	`, fromUserID); err != nil {
+		return fmt.Errorf("debit donor save balance: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE user_progress
+		SET save_balance = save_balance + 1
+		WHERE user_id = $1
+	`, toUserID); err != nil {
+		return fmt.Errorf("credit receiver save balance: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) RespondPartnership(ctx context.Context, partnershipID, partnerID uuid.UUID, accept bool) (*models.Partnership, error) {
@@ -1092,8 +1213,8 @@ func (r *Repository) PartnershipCheckin(ctx context.Context, partnershipID, user
 	return &p, nil
 }
 
-// SavePartner lets the current user cover the partner's check-in for the current week.
-// Limited to saves_remaining, which resets each week.
+// SavePartner lets the caller spend one save from their own inventory to close the current week.
+// The caller can use it on themselves, on the partner, or when both are still pending this week.
 func (r *Repository) SavePartner(ctx context.Context, partnershipID, userID uuid.UUID) (*models.Partnership, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -1121,19 +1242,49 @@ func (r *Repository) SavePartner(ctx context.Context, partnershipID, userID uuid
 		return nil, ErrPartnershipNotActive
 	}
 
-	currentWeek := currentWeekStart(time.Now())
-	if p.SavesResetDate == nil || !currentWeekStart(p.SavesResetDate.UTC()).Equal(currentWeek) {
-		p.SavesRemaining = 1
+	var saveBalance int
+	if err := tx.QueryRow(ctx, `
+		SELECT save_balance
+		FROM user_progress
+		WHERE user_id = $1
+		FOR UPDATE
+	`, userID).Scan(&saveBalance); err != nil {
+		return nil, fmt.Errorf("load save balance: %w", err)
 	}
-
-	if p.SavesRemaining <= 0 {
+	if saveBalance <= 0 {
 		return nil, ErrNoSavesRemaining
 	}
 
+	currentWeek := currentWeekStart(time.Now())
 	// Determine partner
 	partnerID := p.PartnerID
 	if userID == p.PartnerID {
 		partnerID = p.RequesterID
+	}
+
+	var callerChecked bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM partnership_daily
+			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
+		)
+	`, partnershipID, userID, currentWeek).Scan(&callerChecked); err != nil {
+		return nil, fmt.Errorf("check caller weekly activity: %w", err)
+	}
+
+	var partnerChecked bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM partnership_daily
+			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
+		)
+	`, partnershipID, partnerID, currentWeek).Scan(&partnerChecked); err != nil {
+		return nil, fmt.Errorf("check partner weekly activity: %w", err)
+	}
+	if callerChecked && partnerChecked {
+		return nil, fmt.Errorf("week already completed")
 	}
 
 	// Insert save as the partner's weekly checkin.
@@ -1155,14 +1306,14 @@ func (r *Repository) SavePartner(ctx context.Context, partnershipID, userID uuid
 	}
 
 	if _, err := tx.Exec(ctx, `
-		UPDATE streak_partnerships
-		SET saves_remaining = $2,
-		    saves_reset_date = $3
-		WHERE id = $1
-	`, partnershipID, p.SavesRemaining-1, currentWeek); err != nil {
-		return nil, fmt.Errorf("update saves: %w", err)
+		UPDATE user_progress
+		SET save_balance = save_balance - 1
+		WHERE user_id = $1
+	`, userID); err != nil {
+		return nil, fmt.Errorf("spend save balance: %w", err)
 	}
-	p.SavesRemaining--
+	p.MySaveBalance = saveBalance - 1
+	p.SavesRemaining = p.MySaveBalance
 
 	if err := finalizePartnershipWeek(ctx, tx, &p, currentWeek); err != nil {
 		return nil, err
@@ -1188,6 +1339,15 @@ func (r *Repository) enrichPartnership(ctx context.Context, p *models.Partnershi
 	if err != nil {
 		return fmt.Errorf("load partner name: %w", err)
 	}
+	if err := r.pool.QueryRow(ctx, `
+		SELECT save_balance
+		FROM user_progress
+		WHERE user_id = $1
+	`, callerID).Scan(&p.MySaveBalance); err != nil {
+		return fmt.Errorf("load caller save balance: %w", err)
+	}
+	p.SavesRemaining = p.MySaveBalance
+	p.StreakDays = effectiveWeeklyStreak(p.StreakDays, p.LastBothDate, time.Now())
 
 	currentWeek := currentWeekStart(time.Now())
 
@@ -1222,6 +1382,7 @@ func (r *Repository) enrichPartnership(ctx context.Context, p *models.Partnershi
 
 func (r *Repository) GetLeaderboard(ctx context.Context, sortBy, period string) ([]models.LeaderboardEntry, error) {
 	weekStart, weekEnd := leaderboardWeekBounds(time.Now())
+	prevWeek := currentWeekStart(time.Now()).AddDate(0, 0, -7)
 
 	orderClause := "total_xp DESC, streak_days DESC, username ASC"
 	if period == "weekly" {
@@ -1252,7 +1413,11 @@ func (r *Repository) GetLeaderboard(ctx context.Context, sortBy, period string) 
 				u.username,
 				up.total_xp,
 				up.current_level,
-				up.streak_days,
+				CASE
+					WHEN up.last_visit_date IS NULL THEN 0
+					WHEN up.last_visit_date < $3 THEN 0
+					ELSE up.streak_days
+				END AS streak_days,
 				COALESCE(at.achievements_unlocked, 0) AS achievements_unlocked,
 				COALESCE(wt.weekly_xp, 0) AS weekly_xp
 			FROM users u
@@ -1273,7 +1438,7 @@ func (r *Repository) GetLeaderboard(ctx context.Context, sortBy, period string) 
 		LIMIT 10
 	`, orderClause, orderClause)
 
-	rows, err := r.pool.Query(ctx, query, weekStart, weekEnd)
+	rows, err := r.pool.Query(ctx, query, weekStart, weekEnd, prevWeek)
 	if err != nil {
 		return nil, fmt.Errorf("get leaderboard: %w", err)
 	}

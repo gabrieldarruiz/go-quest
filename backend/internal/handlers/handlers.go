@@ -185,6 +185,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		"total_xp":              summary.TotalXP,
 		"current_level":         summary.CurrentLevel,
 		"streak_days":           summary.StreakDays,
+		"save_balance":          summary.SaveBalance,
 		"achievements_unlocked": summary.AchievementsUnlocked,
 	})
 }
@@ -531,6 +532,27 @@ func (h *Handler) GetUserFriends(w http.ResponseWriter, r *http.Request) {
 		friends = []models.Friend{}
 	}
 	writeJSON(w, http.StatusOK, friends)
+}
+
+func (h *Handler) DonateSave(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	friendID, err := uuid.Parse(chi.URLParam(r, "friendID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid friend id")
+		return
+	}
+
+	if err := h.repo.DonateSave(r.Context(), userID, friendID); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"donated": true})
 }
 
 func (h *Handler) GetPartnership(w http.ResponseWriter, r *http.Request) {

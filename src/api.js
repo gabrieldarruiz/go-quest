@@ -33,6 +33,9 @@ export const getUser = (userID) =>
 export const getUserFriends = (userID) =>
   req("GET", `/users/${userID}/friends`);
 
+export const donateSave = (userID, friendID) =>
+  req("POST", `/users/${userID}/friends/${friendID}/donate-save`);
+
 export const searchUsers = (query, viewerID) =>
   req("GET", `/users/search?q=${encodeURIComponent(query)}&viewer_id=${encodeURIComponent(viewerID)}`);
 
