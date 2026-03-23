@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -169,14 +169,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.repo.UpdateStreak(r.Context(), user.ID); err != nil {
+		_ = err
+	}
+
 	summary, err := h.repo.GetUserSummary(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load user summary")
 		return
-	}
-
-	if err := h.repo.UpdateStreak(r.Context(), user.ID); err != nil {
-		_ = err
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -274,18 +274,42 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.repo.UpdateStreak(r.Context(), userID); err != nil {
+		// non-fatal
+		_ = err
+	}
+
 	summary, err := h.repo.GetUserSummary(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
 
-	if err := h.repo.UpdateStreak(r.Context(), userID); err != nil {
-		// non-fatal
-		_ = err
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (h *Handler) SearchUsers(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) < 2 {
+		writeJSON(w, http.StatusOK, []models.UserSearchResult{})
+		return
 	}
 
-	writeJSON(w, http.StatusOK, summary)
+	viewerID, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("viewer_id")))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid viewer_id")
+		return
+	}
+
+	results, err := h.repo.SearchUsers(r.Context(), query, viewerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if results == nil {
+		results = []models.UserSearchResult{}
+	}
+	writeJSON(w, http.StatusOK, results)
 }
 
 // ─── Progress ────────────────────────────────────────────────────────────────
@@ -491,6 +515,24 @@ func (h *Handler) GetUserPartnerships(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, partnerships)
 }
 
+func (h *Handler) GetUserFriends(w http.ResponseWriter, r *http.Request) {
+	userID, err := parseUserID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	friends, err := h.repo.GetUserFriends(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if friends == nil {
+		friends = []models.Friend{}
+	}
+	writeJSON(w, http.StatusOK, friends)
+}
+
 func (h *Handler) GetPartnership(w http.ResponseWriter, r *http.Request) {
 	userID, err := parseUserID(r)
 	if err != nil {
@@ -611,7 +653,15 @@ func (h *Handler) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 		sortBy = "xp"
 	}
 
-	entries, err := h.repo.GetLeaderboard(r.Context(), sortBy)
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "all"
+	}
+	if period != "all" && period != "weekly" {
+		period = "all"
+	}
+
+	entries, err := h.repo.GetLeaderboard(r.Context(), sortBy, period)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -619,7 +669,11 @@ func (h *Handler) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []models.LeaderboardEntry{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"leaderboard": entries})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"leaderboard": entries,
+		"period":      period,
+		"sort":        sortBy,
+	})
 }
 
 // ─── Pomodoro ─────────────────────────────────────────────────────────────────

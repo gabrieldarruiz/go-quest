@@ -30,6 +30,12 @@ export const resetPassword = (token, newPassword) =>
 export const getUser = (userID) =>
   req("GET", `/users/${userID}`);
 
+export const getUserFriends = (userID) =>
+  req("GET", `/users/${userID}/friends`);
+
+export const searchUsers = (query, viewerID) =>
+  req("GET", `/users/search?q=${encodeURIComponent(query)}&viewer_id=${encodeURIComponent(viewerID)}`);
+
 // ─── Achievements ─────────────────────────────────────────────────────────────
 
 export const getAllAchievements = () =>
@@ -77,8 +83,8 @@ export const savePartner = (userID, partnershipID) =>
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
-export const getLeaderboard = (sort = "xp") =>
-  req("GET", `/leaderboard?sort=${sort}`);
+export const getLeaderboard = ({ sort = "xp", period = "all" } = {}) =>
+  req("GET", `/leaderboard?sort=${sort}&period=${period}`);
 
 // ─── Pomodoro ─────────────────────────────────────────────────────────────────
 

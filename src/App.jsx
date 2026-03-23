@@ -269,14 +269,13 @@ function PomodoroTab({ userID }) {
   const [isBreak, setIsBreak] = useState(false);
   const [sessions, setSessions] = useState(0);
   const ref = useRef(null);
-  const sessionStartRef = useRef(null);
 
   const reset = () => { clearInterval(ref.current); setRunning(false); setIsBreak(false); setSeconds(WORK); };
 
   // load today's count from backend
   useEffect(() => {
     if (!userID) return;
-    api.getPomodoroToday(userID).then(d => setSessions(d.sessions_today)).catch(() => {});
+    api.getPomodoroToday(userID).then(d => setSessions(d.sessions_today)).catch(() => undefined);
   }, [userID]);
 
   useEffect(() => {
@@ -290,7 +289,7 @@ function PomodoroTab({ userID }) {
               const type = "work";
               setSessions(n => n + 1);
               if (userID) {
-                api.createPomodoro(userID, type, 25).catch(() => {});
+                api.createPomodoro(userID, type, 25).catch(() => undefined);
               }
               setIsBreak(true);
               return BREAK;
@@ -304,7 +303,7 @@ function PomodoroTab({ userID }) {
       }, 1000);
     }
     return () => clearInterval(ref.current);
-  }, [running, isBreak, userID]);
+  }, [running, isBreak, userID, BREAK, WORK]);
 
   const total = isBreak ? BREAK : WORK;
   const pct = ((total - seconds) / total) * 100;
@@ -655,14 +654,21 @@ export default function GoQuest() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [userID, setUserID] = useState(null);
+  const [summary, setSummary] = useState(null);
   const [totalXP, setTotalXP] = useState(0);
   const [unlocked, setUnlocked] = useState(new Set());
   const [dailyGoals, setDailyGoals] = useState([]);
   const [todayDone, setTodayDone] = useState(new Set());
+  const [friends, setFriends] = useState([]);
   const [partnerships, setPartnerships] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [lbSort, setLbSort] = useState("xp");
-  const [newPartnerID, setNewPartnerID] = useState("");
+  const [lbPeriod, setLbPeriod] = useState("weekly");
+  const [lbLoading, setLbLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
+  const [userResults, setUserResults] = useState([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userSearchError, setUserSearchError] = useState("");
   const [partnerError, setPartnerError] = useState("");
   const [tab, setTab] = useState("hoje");
   const [time, setTime] = useState(new Date());
@@ -685,6 +691,73 @@ export default function GoQuest() {
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { const t = setInterval(() => setPulse(v => !v), 1500); return () => clearInterval(t); }, []);
 
+  // ── Recompute level from XP ───────────────────────────────────────────────
+  const currentLevel = [...LEVELS].reverse().find(l => totalXP >= l.xpMin) || LEVELS[0];
+  const nextLevel = LEVELS.find(l => l.id === currentLevel.id + 1);
+  const xpIn = totalXP - currentLevel.xpMin;
+  const xpNeed = (nextLevel?.xpMin ?? currentLevel.xpMax) - currentLevel.xpMin;
+
+  const showNotif = useCallback((notif, ms = 2500) => {
+    setNotification(notif);
+    setTimeout(() => setNotification(null), ms);
+  }, []);
+
+  const loadSummary = useCallback(async (uid) => {
+    const nextSummary = await api.getUser(uid);
+    setSummary(nextSummary);
+    if (typeof nextSummary.total_xp === "number") {
+      setTotalXP(nextSummary.total_xp);
+    }
+    if (nextSummary.username) {
+      localStorage.setItem("goquest_username", nextSummary.username);
+    }
+    return nextSummary;
+  }, []);
+
+  const loadLeaderboard = useCallback(async (sort = lbSort, period = lbPeriod) => {
+    setLbLoading(true);
+    try {
+      const data = await api.getLeaderboard({ sort, period });
+      setLeaderboard(data.leaderboard || []);
+    } finally {
+      setLbLoading(false);
+    }
+  }, [lbPeriod, lbSort]);
+
+  const loadFriends = useCallback(async (uid) => {
+    const data = await api.getUserFriends(uid);
+    setFriends(data || []);
+    return data || [];
+  }, []);
+
+  const loadPartnerships = useCallback(async (uid) => {
+    const data = await api.getUserPartnerships(uid);
+    setPartnerships(data || []);
+    return data || [];
+  }, []);
+
+  const runUserSearch = useCallback(async (query = userSearch) => {
+    const term = query.trim();
+    setUserSearchError("");
+    if (!userID) return;
+    if (term.length < 2) {
+      setUserResults([]);
+      setUserSearchError("Digite pelo menos 2 caracteres.");
+      return;
+    }
+
+    setUserSearchLoading(true);
+    try {
+      const data = await api.searchUsers(term, userID);
+      setUserResults(data || []);
+    } catch (err) {
+      setUserResults([]);
+      setUserSearchError(err.message || "Nao foi possivel buscar usuarios.");
+    } finally {
+      setUserSearchLoading(false);
+    }
+  }, [userID, userSearch]);
+
   // ── Init: create or load user from localStorage ───────────────────────────
   useEffect(() => {
     if (route !== "/app") return;
@@ -698,47 +771,49 @@ export default function GoQuest() {
       }
       setUserID(uid);
 
-      // load summary (XP, level, streak)
       try {
-        const summary = await api.getUser(uid);
-        setTotalXP(summary.total_xp);
-      } catch {}
+        await loadSummary(uid);
+      } catch (err) {
+        void err;
+      }
 
-      // load unlocked achievements
       try {
         const achs = await api.getUserAchievements(uid);
         setUnlocked(new Set((achs || []).map(a => a.achievement_id)));
-      } catch {}
+      } catch (err) {
+        void err;
+      }
 
-      // load today's goals
       try {
         const data = await api.getDailyGoals(uid);
         const goals = data.goals || [];
         setDailyGoals(goals);
         setTodayDone(new Set(goals.filter(g => g.completed).map(g => g.goal_index)));
-      } catch {}
+      } catch (err) {
+        void err;
+      }
 
-      // load partnerships
       try {
-        const ps = await api.getUserPartnerships(uid);
-        setPartnerships(ps || []);
-      } catch {}
+        await loadPartnerships(uid);
+      } catch (err) {
+        void err;
+      }
+
+      try {
+        await loadFriends(uid);
+      } catch (err) {
+        void err;
+      }
 
       setLoading(false);
     }
     init();
-  }, [route]);
+  }, [route, loadSummary, loadFriends, loadPartnerships]);
 
-  // ── Recompute level from XP ───────────────────────────────────────────────
-  const currentLevel = [...LEVELS].reverse().find(l => totalXP >= l.xpMin) || LEVELS[0];
-  const nextLevel = LEVELS.find(l => l.id === currentLevel.id + 1);
-  const xpIn = totalXP - currentLevel.xpMin;
-  const xpNeed = (nextLevel?.xpMin ?? currentLevel.xpMax) - currentLevel.xpMin;
-
-  const showNotif = useCallback((notif, ms = 2500) => {
-    setNotification(notif);
-    setTimeout(() => setNotification(null), ms);
-  }, []);
+  useEffect(() => {
+    if (route !== "/app" || tab !== "ranking" || !userID) return;
+    loadLeaderboard(lbSort, lbPeriod);
+  }, [route, tab, userID, lbSort, lbPeriod, loadLeaderboard]);
 
   const goTo = useCallback((nextRoute) => {
     window.location.hash = nextRoute;
@@ -752,7 +827,9 @@ export default function GoQuest() {
       const user = await api.register(username, email, password);
       if (!user?.id) throw new Error("Cadastro sem ID retornado.");
       localStorage.setItem("goquest_user_id", user.id);
+      localStorage.setItem("goquest_username", user.username || username);
       setUserID(user.id);
+      setSummary(null);
       setTotalXP(user.total_xp || 0);
       setUnlocked(new Set());
       setTodayDone(new Set());
@@ -774,6 +851,7 @@ export default function GoQuest() {
       localStorage.setItem("goquest_user_id", session.user_id);
       if (session.username) localStorage.setItem("goquest_username", session.username);
       setUserID(session.user_id);
+      setSummary(session);
       if (typeof session.total_xp === "number") {
         setTotalXP(session.total_xp);
       }
@@ -789,12 +867,17 @@ export default function GoQuest() {
     localStorage.removeItem("goquest_user_id");
     localStorage.removeItem("goquest_username");
     setUserID(null);
+    setSummary(null);
     setTotalXP(0);
     setUnlocked(new Set());
     setDailyGoals([]);
     setTodayDone(new Set());
+    setFriends([]);
     setPartnerships([]);
     setLeaderboard([]);
+    setUserSearch("");
+    setUserResults([]);
+    setUserSearchError("");
     goTo("/login");
   }, [goTo]);
 
@@ -843,8 +926,7 @@ export default function GoQuest() {
         if (ach) {
           showNotif({ icon: "↺", title: `${ach.title} removida`, desc: `-${ach.xp} XP` });
         }
-        const summary = await api.getUser(userID);
-        setTotalXP(summary.total_xp);
+        await loadSummary(userID);
       } catch {
         setUnlocked(prev => new Set([...prev, id]));
       }
@@ -860,10 +942,11 @@ export default function GoQuest() {
         if (ms) showNotif(ms, 3500);
         else showNotif({ icon: ach.icon, title: ach.title, desc: `+${ach.xp} XP` });
       }
-      const summary = await api.getUser(userID);
-      setTotalXP(summary.total_xp);
-    } catch {}
-  }, [userID, unlocked, showNotif]);
+      await loadSummary(userID);
+    } catch (err) {
+      void err;
+    }
+  }, [userID, unlocked, showNotif, loadSummary]);
 
   const toggleG = useCallback(async (i) => {
     if (!userID) return;
@@ -873,6 +956,7 @@ export default function GoQuest() {
       try {
         await api.uncompleteGoal(userID, i);
         if (goal?.template?.xp_reward) setTotalXP(prev => Math.max(0, prev - goal.template.xp_reward));
+        await loadSummary(userID);
       } catch {
         setTodayDone(prev => new Set([...prev, i]));
       }
@@ -881,14 +965,37 @@ export default function GoQuest() {
       try {
         await api.completeGoal(userID, i, goal?.template?.id, goal?.template?.xp_reward || 0);
         if (goal?.template?.xp_reward) setTotalXP(prev => prev + goal.template.xp_reward);
+        await loadSummary(userID);
       } catch {
         setTodayDone(prev => { const n = new Set(prev); n.delete(i); return n; });
       }
     }
-  }, [userID, todayDone, dailyGoals]);
+  }, [userID, todayDone, dailyGoals, loadSummary]);
 
   const timeStr = time.toTimeString().slice(0, 8);
   const dateStr = time.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).toUpperCase();
+  const currentStreak = summary?.streak_days || 0;
+  const weekLabel = (() => {
+    const now = new Date();
+    const start = new Date(now);
+    const weekday = start.getDay();
+    const diff = weekday === 0 ? -6 : 1 - weekday;
+    start.setDate(start.getDate() + diff);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const fmt = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+    return `${fmt(start)} - ${fmt(end)}`.toUpperCase();
+  })();
+  const copyMyID = useCallback(async () => {
+    if (!userID || !navigator?.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(userID);
+      showNotif({ icon: "⎘", title: "ID copiado", desc: "Seu UUID foi para a area de transferencia." });
+    } catch (err) {
+      void err;
+    }
+  }, [userID, showNotif]);
 
   const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["parcerias","// PARCERIAS"],["ranking","// RANKING"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
   const resetToken = hashSearchParams().get("token") || "";
@@ -973,10 +1080,12 @@ export default function GoQuest() {
         </div>
 
         {/* STATS */}
-        <div style={{ background: "#0a0a0f", border: "1px solid #2a2a4e", borderRadius: 4, padding: "16px 20px", marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 24 }}>
+        <div style={{ background: "#0a0a0f", border: "1px solid #2a2a4e", borderRadius: 4, padding: "16px 20px", marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 24 }}>
           {[
             { label: "NÍVEL", value: currentLevel.id, sub: currentLevel.title, color: currentLevel.color },
             { label: "XP TOTAL", value: totalXP, sub: `${xpIn}/${xpNeed} próx.`, color: "#00cfff" },
+            { label: "STREAK", value: currentStreak, sub: currentStreak > 0 ? `${currentStreak} semanas seguidas` : "comece nesta semana", color: "#ff6b35" },
+            { label: "AMIGOS", value: friends.length, sub: friends.length > 0 ? "rede ativa" : "sem conexões ainda", color: "#a855f7" },
             { label: "CONQUISTAS", value: `${unlocked.size}/${ACHIEVEMENTS.length}`, sub: `${Math.round(unlocked.size / ACHIEVEMENTS.length * 100)}% completo`, color: "#ff2d78" },
             { label: "MARCOS", value: MILESTONES.filter(m => unlocked.has(m.trigger)).length, sub: `de ${MILESTONES.length} especiais`, color: "#ffcc00" },
             { label: "HOJE", value: `${todayDone.size}/5`, sub: todayDone.size === 5 ? "🔥 dia perfeito!" : "metas do dia", color: "#00ff88" },
@@ -1119,32 +1228,113 @@ export default function GoQuest() {
         {/* ── PARCERIAS ── */}
         {tab === "parcerias" && (
           <div style={{ maxWidth: 680 }}>
-            {/* Convidar parceiro */}
             <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// CONVIDAR PARCEIRO DE STREAK</div>
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>Cole o ID do usuário parceiro para criar uma streak em dupla. Ambos precisam fazer check-in diário para manter a streak.</div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// BUSCAR USUARIO POR USERNAME</div>
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>Procure pelo username da pessoa e envie o convite de streak direto daqui. Se a parceria for aceita, voces viram amigos automaticamente.</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 <input
-                  value={newPartnerID}
-                  onChange={e => setNewPartnerID(e.target.value)}
-                  placeholder="UUID do parceiro..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && runUserSearch()}
+                  placeholder="Buscar por username..."
                   style={{ flex: 1, background: "#111", border: "1px solid #2a2a3e", borderRadius: 3, padding: "8px 10px", color: "#f0f0ff", fontSize: 12, outline: "none" }}
                 />
                 <button
-                  onClick={async () => {
-                    setPartnerError("");
-                    if (!newPartnerID.trim()) return;
-                    try {
-                      const p = await api.createPartnership(userID, newPartnerID.trim());
-                      setPartnerships(prev => [p, ...prev]);
-                      setNewPartnerID("");
-                    } catch (e) { setPartnerError(e.message); }
-                  }}
-                  style={{ background: "#a855f722", border: "1px solid #a855f755", borderRadius: 3, color: "#c0a0ff", padding: "8px 16px", fontSize: 12, cursor: "pointer" }}
-                >Convidar</button>
+                  onClick={() => runUserSearch()}
+                  style={{ background: "#00cfff22", border: "1px solid #00cfff55", borderRadius: 3, color: "#00cfff", padding: "8px 16px", fontSize: 12, cursor: "pointer", minWidth: 90 }}
+                >
+                  {userSearchLoading ? "..." : "Buscar"}
+                </button>
               </div>
-              {partnerError && <div style={{ fontSize: 12, color: "#ff6b6b", marginTop: 8 }}>{partnerError}</div>}
+              {userSearchError && <div style={{ fontSize: 12, color: "#ff6b6b", marginBottom: 10 }}>{userSearchError}</div>}
+              {userResults.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {userResults.map((result) => {
+                    const canInvite = !result.partnership_status || result.partnership_status === "";
+                    const canAccept = result.partnership_status === "pending_received" && result.partnership_id;
+                    let actionLabel = "Convidar";
+                    if (result.partnership_status === "active") actionLabel = "Streak ativa";
+                    if (result.partnership_status === "pending_sent") actionLabel = "Convite enviado";
+                    if (result.partnership_status === "pending_received") actionLabel = "Aceitar";
+                    return (
+                      <div key={result.id} style={{ background: "#111", border: "1px solid #1f1f33", borderRadius: 4, padding: "10px 12px", display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, color: "#f0f0ff" }}>{result.username}</div>
+                          <div style={{ fontSize: 11, color: result.is_friend ? "#a855f7" : "#666", marginTop: 2 }}>
+                            {result.is_friend ? "ja e seu amigo" : "ainda nao e amigo"}
+                            {result.partnership_status === "active" ? " · streak ativa" : ""}
+                            {result.partnership_status === "pending_sent" ? " · aguardando aceite" : ""}
+                            {result.partnership_status === "pending_received" ? " · te convidou para streak" : ""}
+                          </div>
+                        </div>
+                        <button
+                          disabled={!canInvite && !canAccept}
+                          onClick={async () => {
+                            setPartnerError("");
+                            try {
+                              if (canAccept && result.partnership_id) {
+                                await api.respondPartnership(userID, result.partnership_id, true);
+                              } else if (canInvite) {
+                                await api.createPartnership(userID, result.id);
+                              }
+                              await loadPartnerships(userID);
+                              await loadFriends(userID);
+                              await runUserSearch(userSearch);
+                            } catch (e) {
+                              setPartnerError(e.message);
+                            }
+                          }}
+                          style={{ background: canInvite || canAccept ? "#a855f722" : "transparent", border: `1px solid ${canInvite || canAccept ? "#a855f755" : "#2a2a3e"}`, borderRadius: 3, color: canInvite || canAccept ? "#c0a0ff" : "#555", padding: "8px 14px", fontSize: 11, cursor: canInvite || canAccept ? "pointer" : "not-allowed", minWidth: 120 }}
+                        >
+                          {actionLabel}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
+            <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// ID DE CONVITE (FALLBACK)</div>
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>Se precisar, ainda da para compartilhar seu UUID manualmente.</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ flex: 1, background: "#111", border: "1px solid #2a2a3e", borderRadius: 3, padding: "8px 10px", color: "#bbb", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {userID || "sem sessao"}
+                </div>
+                <button
+                  onClick={copyMyID}
+                  style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#888", padding: "8px 16px", fontSize: 12, cursor: "pointer" }}
+                >
+                  Copiar
+                </button>
+              </div>
+            </div>
+
+            <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// AMIGOS</div>
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Todo aceite de parceria vira amizade automaticamente. Aqui voce ve sua rede e se existe streak ativa com cada pessoa.</div>
+              {friends.length === 0
+                ? <div style={{ fontSize: 13, color: "#444" }}>Nenhum amigo ainda.</div>
+                : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {friends.map(f => (
+                      <div key={f.user_id} style={{ background: "#111", border: "1px solid #1f1f33", borderRadius: 4, padding: 12 }}>
+                        <div style={{ fontSize: 13, color: "#f0f0ff", marginBottom: 4 }}>{f.username}</div>
+                        <div style={{ fontSize: 11, color: "#666", marginBottom: 8 }}>
+                          amigo desde {new Date(f.friends_since).toLocaleDateString("pt-BR")}
+                        </div>
+                        <div style={{ fontSize: 11, color: f.has_active_partnership ? "#00ff88" : "#555" }}>
+                          {f.has_active_partnership ? `streak ativa: ${f.partnership_streak_days} semanas` : "sem streak ativa agora"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              }
+            </div>
+
+            {partnerError && <div style={{ fontSize: 12, color: "#ff6b6b", margin: "0 0 16px" }}>{partnerError}</div>}
 
             {/* Lista de parcerias */}
             {partnerships.length === 0
@@ -1167,7 +1357,7 @@ export default function GoQuest() {
                       {p.status === "active" && (
                         <div style={{ textAlign: "right" }}>
                           <div style={{ fontSize: 22, color: "#ffcc00" }}>🔥 {p.streak_days}</div>
-                          <div style={{ fontSize: 10, color: "#666" }}>dias juntos</div>
+                          <div style={{ fontSize: 10, color: "#666" }}>semanas juntos</div>
                         </div>
                       )}
                     </div>
@@ -1175,10 +1365,10 @@ export default function GoQuest() {
                     {p.status === "active" && (
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                         <div style={{ flex: 1, background: p.my_checkin_today ? "#00ff8811" : "#111", border: `1px solid ${p.my_checkin_today ? "#00ff8844" : "#2a2a3e"}`, borderRadius: 3, padding: "6px 10px", fontSize: 11, color: p.my_checkin_today ? "#00ff88" : "#555", textAlign: "center" }}>
-                          você {p.my_checkin_today ? "✓" : "—"}
+                          você nesta semana {p.my_checkin_today ? "✓" : "—"}
                         </div>
                         <div style={{ flex: 1, background: p.partner_checkin_today ? "#00ff8811" : "#111", border: `1px solid ${p.partner_checkin_today ? "#00ff8844" : "#2a2a3e"}`, borderRadius: 3, padding: "6px 10px", fontSize: 11, color: p.partner_checkin_today ? "#00ff88" : "#555", textAlign: "center" }}>
-                          {partnerName} {p.partner_checkin_today ? "✓" : "—"}
+                          {partnerName} nesta semana {p.partner_checkin_today ? "✓" : "—"}
                         </div>
                       </div>
                     )}
@@ -1189,9 +1379,11 @@ export default function GoQuest() {
                           try {
                             const updated = await api.partnershipCheckin(userID, p.id);
                             setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
-                          } catch {}
+                          } catch (err) {
+                            void err;
+                          }
                         }} style={{ background: "#00ff8822", border: "1px solid #00ff8855", borderRadius: 3, color: "#00ff88", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
-                          Check-in hoje
+                          Check-in da semana
                         </button>
                       )}
                       {p.status === "active" && p.my_checkin_today && !p.partner_checkin_today && p.saves_remaining > 0 && (
@@ -1199,9 +1391,11 @@ export default function GoQuest() {
                           try {
                             const updated = await api.savePartner(userID, p.id);
                             setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
-                          } catch {}
+                          } catch (err) {
+                            void err;
+                          }
                         }} style={{ background: "#ffcc0022", border: "1px solid #ffcc0055", borderRadius: 3, color: "#ffcc00", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
-                          Salvar parceiro ({p.saves_remaining} restante)
+                          Salvar semana ({p.saves_remaining} restante)
                         </button>
                       )}
                       {isPending && !isRequester && (
@@ -1210,7 +1404,11 @@ export default function GoQuest() {
                             try {
                               const updated = await api.respondPartnership(userID, p.id, true);
                               setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
-                            } catch {}
+                              await loadFriends(userID);
+                              if (userSearch.trim()) await runUserSearch(userSearch);
+                            } catch (err) {
+                              void err;
+                            }
                           }} style={{ background: "#00ff8822", border: "1px solid #00ff8855", borderRadius: 3, color: "#00ff88", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
                             Aceitar
                           </button>
@@ -1218,7 +1416,10 @@ export default function GoQuest() {
                             try {
                               const updated = await api.respondPartnership(userID, p.id, false);
                               setPartnerships(prev => prev.map(x => x.id === p.id ? updated : x));
-                            } catch {}
+                              if (userSearch.trim()) await runUserSearch(userSearch);
+                            } catch (err) {
+                              void err;
+                            }
                           }} style={{ background: "#ff6b3522", border: "1px solid #ff6b3555", borderRadius: 3, color: "#ff6b35", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
                             Recusar
                           </button>
@@ -1228,7 +1429,10 @@ export default function GoQuest() {
                         try {
                           await api.cancelPartnership(userID, p.id);
                           setPartnerships(prev => prev.filter(x => x.id !== p.id));
-                        } catch {}
+                          if (userSearch.trim()) await runUserSearch(userSearch);
+                        } catch (err) {
+                          void err;
+                        }
                       }} style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#555", padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>
                         Cancelar
                       </button>
@@ -1243,39 +1447,57 @@ export default function GoQuest() {
         {/* ── RANKING ── */}
         {tab === "ranking" && (
           <div style={{ maxWidth: 680 }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {[["xp","XP Total"],["streak","Streak"],["level","Nível"]].map(([s, label]) => (
-                <button key={s} onClick={async () => {
-                  setLbSort(s);
-                  try {
-                    const data = await api.getLeaderboard(s);
-                    setLeaderboard(data.leaderboard || []);
-                  } catch {}
-                }} style={{ background: lbSort === s ? "#00cfff22" : "transparent", border: `1px solid ${lbSort === s ? "#00cfff55" : "#2a2a3e"}`, borderRadius: 3, color: lbSort === s ? "#00cfff" : "#555", padding: "6px 14px", fontSize: 11, cursor: "pointer" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+              {[["weekly","Semanal"],["all","Geral"]].map(([period, label]) => (
+                <button
+                  key={period}
+                  onClick={() => setLbPeriod(period)}
+                  style={{ background: lbPeriod === period ? "#ff2d7822" : "transparent", border: `1px solid ${lbPeriod === period ? "#ff2d7855" : "#2a2a3e"}`, borderRadius: 3, color: lbPeriod === period ? "#ff2d78" : "#555", padding: "6px 14px", fontSize: 11, cursor: "pointer" }}
+                >
                   {label}
                 </button>
               ))}
-              <button onClick={async () => {
-                try {
-                  const data = await api.getLeaderboard(lbSort);
-                  setLeaderboard(data.leaderboard || []);
-                } catch {}
-              }} style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#555", padding: "6px 14px", fontSize: 11, cursor: "pointer", marginLeft: "auto" }}>
-                ↺ Atualizar
+              <div style={{ marginLeft: "auto", fontSize: 11, color: "#666" }}>
+                {lbPeriod === "weekly" ? `semana atual · ${weekLabel}` : "ranking geral"}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              {[["xp","XP Total"],["streak","Streak"],["level","Nível"]].map(([s, label]) => (
+                <button
+                  key={s}
+                  onClick={() => setLbSort(s)}
+                  disabled={lbPeriod === "weekly"}
+                  style={{ background: lbSort === s && lbPeriod !== "weekly" ? "#00cfff22" : "transparent", border: `1px solid ${lbSort === s && lbPeriod !== "weekly" ? "#00cfff55" : "#2a2a3e"}`, borderRadius: 3, color: lbPeriod === "weekly" ? "#333" : lbSort === s ? "#00cfff" : "#555", padding: "6px 14px", fontSize: 11, cursor: lbPeriod === "weekly" ? "not-allowed" : "pointer", opacity: lbPeriod === "weekly" ? 0.5 : 1 }}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                onClick={() => loadLeaderboard(lbSort, lbPeriod)}
+                style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#555", padding: "6px 14px", fontSize: 11, cursor: "pointer", marginLeft: "auto" }}
+              >
+                {lbLoading ? "..." : "↺ Atualizar"}
               </button>
             </div>
 
-            {leaderboard.length === 0
+            {lbLoading
+              ? (
+                <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 24, textAlign: "center", fontSize: 13, color: "#666" }}>
+                  carregando ranking...
+                </div>
+              )
+              : leaderboard.length === 0
               ? (
                 <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 24, textAlign: "center" }}>
-                  <div style={{ fontSize: 13, color: "#444", marginBottom: 8 }}>Ranking não carregado</div>
-                  <button onClick={async () => {
-                    try {
-                      const data = await api.getLeaderboard(lbSort);
-                      setLeaderboard(data.leaderboard || []);
-                    } catch {}
-                  }} style={{ background: "#00cfff22", border: "1px solid #00cfff55", borderRadius: 3, color: "#00cfff", padding: "8px 20px", fontSize: 12, cursor: "pointer" }}>
-                    Carregar ranking
+                  <div style={{ fontSize: 13, color: "#444", marginBottom: 8 }}>
+                    {lbPeriod === "weekly" ? "Ninguem pontuou nesta semana ainda." : "Ranking ainda vazio."}
+                  </div>
+                  <button
+                    onClick={() => loadLeaderboard(lbSort, lbPeriod)}
+                    style={{ background: "#00cfff22", border: "1px solid #00cfff55", borderRadius: 3, color: "#00cfff", padding: "8px 20px", fontSize: 12, cursor: "pointer" }}
+                  >
+                    Recarregar
                   </button>
                 </div>
               )
@@ -1290,8 +1512,10 @@ export default function GoQuest() {
                       <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>nível {e.current_level} · {e.achievements_unlocked} conquistas</div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 13, color: "#ffcc00" }}>{e.total_xp} XP</div>
-                      <div style={{ fontSize: 11, color: "#ff6b35" }}>🔥 {e.streak_days} dias</div>
+                      <div style={{ fontSize: 13, color: lbPeriod === "weekly" ? "#00ff88" : "#ffcc00" }}>
+                        {lbPeriod === "weekly" ? `${e.weekly_xp} XP na semana` : `${e.total_xp} XP`}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#ff6b35" }}>🔥 {e.streak_days} semanas</div>
                     </div>
                   </div>
                 );

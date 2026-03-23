@@ -80,9 +80,11 @@ func main() {
 
 		r.Route("/users", func(r chi.Router) {
 			r.Post("/", h.CreateUser)
+			r.Get("/search", h.SearchUsers)
 			r.Route("/{userID}", func(r chi.Router) {
 				r.Get("/", h.GetUser)
 				r.Get("/progress", h.GetProgress)
+				r.Get("/friends", h.GetUserFriends)
 				r.Get("/achievements", h.GetUserAchievements)
 				r.Post("/achievements/{achievementID}", h.UnlockAchievement)
 				r.Delete("/achievements/{achievementID}", h.RemoveAchievement)

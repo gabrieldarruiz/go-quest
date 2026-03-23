@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,6 +47,18 @@ func levelFromXP(totalXP int) int {
 	default:
 		return 10
 	}
+}
+
+func orderedUserPair(a, b uuid.UUID) (uuid.UUID, uuid.UUID) {
+	if strings.Compare(a.String(), b.String()) <= 0 {
+		return a, b
+	}
+	return b, a
+}
+
+func currentWeekStart(now time.Time) time.Time {
+	start, _ := leaderboardWeekBounds(now)
+	return start
 }
 
 func (r *Repository) recalcUserProgressFromAchievements(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
@@ -115,6 +128,74 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*models.
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
 	return &u, nil
+}
+
+func (r *Repository) SearchUsers(ctx context.Context, query string, viewerID uuid.UUID) ([]models.UserSearchResult, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			u.id,
+			u.username,
+			EXISTS(
+				SELECT 1
+				FROM friendships f
+				WHERE
+					(f.user_a_id = $2 AND f.user_b_id = u.id)
+					OR
+					(f.user_b_id = $2 AND f.user_a_id = u.id)
+			) AS is_friend,
+			rel.id,
+			rel.requester_id,
+			COALESCE(rel.status, '') AS partnership_status
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT sp.id, sp.status, sp.requester_id
+			FROM streak_partnerships sp
+			WHERE
+				(
+					(sp.requester_id = $2 AND sp.partner_id = u.id)
+					OR
+					(sp.requester_id = u.id AND sp.partner_id = $2)
+				)
+				AND sp.status IN ('pending', 'active')
+			ORDER BY
+				CASE sp.status WHEN 'active' THEN 0 ELSE 1 END,
+				sp.created_at DESC
+			LIMIT 1
+		) rel ON true
+		WHERE u.id <> $2
+		  AND u.username ILIKE '%' || $1 || '%'
+		ORDER BY
+			CASE
+				WHEN LOWER(u.username) = LOWER($1) THEN 0
+				WHEN LOWER(u.username) LIKE LOWER($1) || '%' THEN 1
+				ELSE 2
+			END,
+			u.username ASC
+		LIMIT 10
+	`, query, viewerID)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+
+	var results []models.UserSearchResult
+	for rows.Next() {
+		var item models.UserSearchResult
+		var requesterID *uuid.UUID
+		if err := rows.Scan(&item.ID, &item.Username, &item.IsFriend, &item.PartnershipID, &requesterID, &item.PartnershipStatus); err != nil {
+			return nil, fmt.Errorf("scan search user: %w", err)
+		}
+		if item.PartnershipStatus == "pending" && requesterID != nil {
+			if *requesterID == viewerID {
+				item.PartnershipStatus = "pending_sent"
+			} else {
+				item.PartnershipStatus = "pending_received"
+			}
+		}
+		results = append(results, item)
+	}
+
+	return results, rows.Err()
 }
 
 func (r *Repository) AuthenticateUser(ctx context.Context, email, password string) (*models.User, error) {
@@ -280,16 +361,16 @@ func (r *Repository) UpdateStreak(ctx context.Context, userID uuid.UUID) error {
 		return err
 	}
 
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+	currentWeek := currentWeekStart(time.Now())
 	newStreak := 1
 
 	if lastVisit != nil {
-		last := lastVisit.UTC().Truncate(24 * time.Hour)
-		diff := today.Sub(last)
+		lastWeek := currentWeekStart(lastVisit.UTC())
+		prevWeek := currentWeek.AddDate(0, 0, -7)
 		switch {
-		case diff == 0:
-			return nil // already visited today
-		case diff == 24*time.Hour:
+		case lastWeek.Equal(currentWeek):
+			return nil // already counted this week
+		case lastWeek.Equal(prevWeek):
 			var current int
 			r.pool.QueryRow(ctx, `SELECT streak_days FROM user_progress WHERE user_id = $1`, userID).Scan(&current)
 			newStreak = current + 1
@@ -298,8 +379,27 @@ func (r *Repository) UpdateStreak(ctx context.Context, userID uuid.UUID) error {
 
 	_, err = r.pool.Exec(ctx, `
 		UPDATE user_progress SET streak_days = $2, last_visit_date = $3 WHERE user_id = $1
-	`, userID, newStreak, today)
+	`, userID, newStreak, currentWeek)
 	return err
+}
+
+func leaderboardWeekBounds(now time.Time) (time.Time, time.Time) {
+	loc := time.UTC
+	if saoPaulo, err := time.LoadLocation("America/Sao_Paulo"); err == nil {
+		loc = saoPaulo
+	}
+
+	localNow := now.In(loc)
+	weekday := int(localNow.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+
+	weekStartLocal := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc).
+		AddDate(0, 0, -(weekday - 1))
+	weekEndLocal := weekStartLocal.AddDate(0, 0, 7)
+
+	return weekStartLocal.UTC(), weekEndLocal.UTC()
 }
 
 // ─── Achievements ─────────────────────────────────────────────────────────────
@@ -678,6 +778,25 @@ var ErrAlreadyPartnered = errors.New("partnership already exists between these u
 var ErrNoSavesRemaining = errors.New("no saves remaining this week")
 
 func (r *Repository) CreatePartnership(ctx context.Context, requesterID, partnerID uuid.UUID) (*models.Partnership, error) {
+	var alreadyExists bool
+	if err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM streak_partnerships
+			WHERE (
+				(requester_id = $1 AND partner_id = $2)
+				OR
+				(requester_id = $2 AND partner_id = $1)
+			)
+			AND status IN ('pending', 'active')
+		)
+	`, requesterID, partnerID).Scan(&alreadyExists); err != nil {
+		return nil, fmt.Errorf("check partnership: %w", err)
+	}
+	if alreadyExists {
+		return nil, ErrAlreadyPartnered
+	}
+
 	var p models.Partnership
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO streak_partnerships (requester_id, partner_id)
@@ -748,13 +867,82 @@ func (r *Repository) GetUserPartnerships(ctx context.Context, userID uuid.UUID) 
 	return result, rows.Err()
 }
 
+func (r *Repository) ensureFriendshipTx(ctx context.Context, tx pgx.Tx, userA, userB uuid.UUID) error {
+	left, right := orderedUserPair(userA, userB)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO friendships (user_a_id, user_b_id)
+		VALUES ($1, $2)
+		ON CONFLICT (user_a_id, user_b_id) DO NOTHING
+	`, left, right); err != nil {
+		return fmt.Errorf("ensure friendship: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) GetUserFriends(ctx context.Context, userID uuid.UUID) ([]models.Friend, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			CASE WHEN f.user_a_id = $1 THEN f.user_b_id ELSE f.user_a_id END AS friend_id,
+			u.username,
+			f.created_at,
+			sp.id IS NOT NULL AS has_active_partnership,
+			sp.id,
+			COALESCE(sp.streak_days, 0) AS partnership_streak_days
+		FROM friendships f
+		JOIN users u
+			ON u.id = CASE WHEN f.user_a_id = $1 THEN f.user_b_id ELSE f.user_a_id END
+		LEFT JOIN LATERAL (
+			SELECT id, streak_days
+			FROM streak_partnerships
+			WHERE status = 'active'
+			  AND (
+				(requester_id = $1 AND partner_id = u.id)
+				OR
+				(requester_id = u.id AND partner_id = $1)
+			  )
+			ORDER BY created_at DESC
+			LIMIT 1
+		) sp ON true
+		WHERE f.user_a_id = $1 OR f.user_b_id = $1
+		ORDER BY u.username ASC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list friends: %w", err)
+	}
+	defer rows.Close()
+
+	var friends []models.Friend
+	for rows.Next() {
+		var f models.Friend
+		if err := rows.Scan(
+			&f.UserID,
+			&f.Username,
+			&f.FriendsSince,
+			&f.HasActivePartnership,
+			&f.PartnershipID,
+			&f.PartnershipStreakDays,
+		); err != nil {
+			return nil, fmt.Errorf("scan friend: %w", err)
+		}
+		friends = append(friends, f)
+	}
+
+	return friends, rows.Err()
+}
+
 func (r *Repository) RespondPartnership(ctx context.Context, partnershipID, partnerID uuid.UUID, accept bool) (*models.Partnership, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	newStatus := "rejected"
 	if accept {
 		newStatus = "active"
 	}
 	var p models.Partnership
-	err := r.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		UPDATE streak_partnerships
 		SET status = $3
 		WHERE id = $1 AND partner_id = $2 AND status = 'pending'
@@ -768,6 +956,14 @@ func (r *Repository) RespondPartnership(ctx context.Context, partnershipID, part
 			return nil, ErrPartnershipNotFound
 		}
 		return nil, fmt.Errorf("respond partnership: %w", err)
+	}
+	if accept {
+		if err := r.ensureFriendshipTx(ctx, tx, p.RequesterID, p.PartnerID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 	if err := r.enrichPartnership(ctx, &p, partnerID); err != nil {
 		return nil, err
@@ -791,9 +987,58 @@ func (r *Repository) CancelPartnership(ctx context.Context, partnershipID, userI
 	return nil
 }
 
-// PartnershipCheckin marks today's activity for the user in the partnership.
-// If both partners have checked in today, streak_days is incremented.
-// If a day was missed (last_both_date < yesterday), streak resets to 0.
+func finalizePartnershipWeek(ctx context.Context, tx pgx.Tx, p *models.Partnership, currentWeek time.Time) error {
+	var requesterChecked bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM partnership_daily
+			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
+		)
+	`, p.ID, p.RequesterID, currentWeek).Scan(&requesterChecked); err != nil {
+		return fmt.Errorf("check requester weekly activity: %w", err)
+	}
+
+	var partnerChecked bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM partnership_daily
+			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
+		)
+	`, p.ID, p.PartnerID, currentWeek).Scan(&partnerChecked); err != nil {
+		return fmt.Errorf("check partner weekly activity: %w", err)
+	}
+
+	if !requesterChecked || !partnerChecked {
+		return nil
+	}
+
+	newStreak := 1
+	if p.LastBothDate != nil {
+		lastWeek := currentWeekStart(p.LastBothDate.UTC())
+		prevWeek := currentWeek.AddDate(0, 0, -7)
+		switch {
+		case lastWeek.Equal(currentWeek):
+			newStreak = p.StreakDays
+		case lastWeek.Equal(prevWeek):
+			newStreak = p.StreakDays + 1
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE streak_partnerships
+		SET streak_days = $2, last_both_date = $3
+		WHERE id = $1
+	`, p.ID, newStreak, currentWeek); err != nil {
+		return fmt.Errorf("update partnership weekly streak: %w", err)
+	}
+
+	p.StreakDays = newStreak
+	p.LastBothDate = &currentWeek
+	return nil
+}
+
+// PartnershipCheckin marks this week's activity for the user in the partnership.
+// If both partners have checked in this week, streak_days is incremented as a weekly streak.
 func (r *Repository) PartnershipCheckin(ctx context.Context, partnershipID, userID uuid.UUID) (*models.Partnership, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -822,54 +1067,19 @@ func (r *Repository) PartnershipCheckin(ctx context.Context, partnershipID, user
 		return nil, ErrPartnershipNotActive
 	}
 
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+	currentWeek := currentWeekStart(time.Now())
 
-	// Insert checkin (idempotent)
+	// Insert weekly checkin (idempotent)
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO partnership_daily (partnership_id, user_id, activity_date)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, partnershipID, userID, today); err != nil {
+	`, partnershipID, userID, currentWeek); err != nil {
 		return nil, fmt.Errorf("insert checkin: %w", err)
 	}
 
-	// Check if partner also checked in today
-	var partnerCheckin bool
-	partnerID := p.PartnerID
-	if userID == p.PartnerID {
-		partnerID = p.RequesterID
-	}
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM partnership_daily
-			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
-		)
-	`, partnershipID, partnerID, today).Scan(&partnerCheckin); err != nil {
-		return nil, fmt.Errorf("check partner checkin: %w", err)
-	}
-
-	if partnerCheckin {
-		// Both checked in today — check for streak continuity
-		newStreak := 1
-		if p.LastBothDate != nil {
-			yesterday := today.Add(-24 * time.Hour)
-			last := p.LastBothDate.UTC().Truncate(24 * time.Hour)
-			if last.Equal(yesterday) {
-				newStreak = p.StreakDays + 1
-			} else if last.Equal(today) {
-				// Already counted today
-				newStreak = p.StreakDays
-			}
-		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE streak_partnerships
-			SET streak_days = $2, last_both_date = $3
-			WHERE id = $1
-		`, partnershipID, newStreak, today); err != nil {
-			return nil, fmt.Errorf("update partnership streak: %w", err)
-		}
-		p.StreakDays = newStreak
-		p.LastBothDate = &today
+	if err := finalizePartnershipWeek(ctx, tx, &p, currentWeek); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -882,8 +1092,8 @@ func (r *Repository) PartnershipCheckin(ctx context.Context, partnershipID, user
 	return &p, nil
 }
 
-// SavePartner lets the current user "save" the partnership streak when the
-// partner missed a day. Limited to saves_remaining (reset weekly).
+// SavePartner lets the current user cover the partner's check-in for the current week.
+// Limited to saves_remaining, which resets each week.
 func (r *Repository) SavePartner(ctx context.Context, partnershipID, userID uuid.UUID) (*models.Partnership, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -911,9 +1121,8 @@ func (r *Repository) SavePartner(ctx context.Context, partnershipID, userID uuid
 		return nil, ErrPartnershipNotActive
 	}
 
-	// Reset saves weekly
-	today := time.Now().UTC().Truncate(24 * time.Hour)
-	if p.SavesResetDate == nil || today.Sub(p.SavesResetDate.UTC()) >= 7*24*time.Hour {
+	currentWeek := currentWeekStart(time.Now())
+	if p.SavesResetDate == nil || !currentWeekStart(p.SavesResetDate.UTC()).Equal(currentWeek) {
 		p.SavesRemaining = 1
 	}
 
@@ -927,36 +1136,37 @@ func (r *Repository) SavePartner(ctx context.Context, partnershipID, userID uuid
 		partnerID = p.RequesterID
 	}
 
-	// Insert save as a fake checkin for the partner yesterday
-	yesterday := today.Add(-24 * time.Hour)
+	// Insert save as the partner's weekly checkin.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO partnership_daily (partnership_id, user_id, activity_date)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, partnershipID, partnerID, yesterday); err != nil {
+	`, partnershipID, partnerID, currentWeek); err != nil {
 		return nil, fmt.Errorf("insert save checkin: %w", err)
 	}
 
-	// Also ensure caller has yesterday's checkin (they used the save)
+	// Also ensure caller has the week's checkin so the pair can close the week.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO partnership_daily (partnership_id, user_id, activity_date)
 		VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING
-	`, partnershipID, userID, yesterday); err != nil {
+	`, partnershipID, userID, currentWeek); err != nil {
 		return nil, fmt.Errorf("insert save self checkin: %w", err)
 	}
 
-	nextReset := today.Add(7 * 24 * time.Hour)
 	if _, err := tx.Exec(ctx, `
 		UPDATE streak_partnerships
-		SET saves_remaining = saves_remaining - 1,
-		    saves_reset_date = $2,
-		    last_both_date = GREATEST(COALESCE(last_both_date, $3), $3)
+		SET saves_remaining = $2,
+		    saves_reset_date = $3
 		WHERE id = $1
-	`, partnershipID, nextReset, yesterday); err != nil {
+	`, partnershipID, p.SavesRemaining-1, currentWeek); err != nil {
 		return nil, fmt.Errorf("update saves: %w", err)
 	}
 	p.SavesRemaining--
+
+	if err := finalizePartnershipWeek(ctx, tx, &p, currentWeek); err != nil {
+		return nil, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
@@ -979,19 +1189,19 @@ func (r *Repository) enrichPartnership(ctx context.Context, p *models.Partnershi
 		return fmt.Errorf("load partner name: %w", err)
 	}
 
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+	currentWeek := currentWeekStart(time.Now())
 
-	// Caller checkin today
+	// Caller weekly checkin
 	if err := r.pool.QueryRow(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM partnership_daily
 			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
 		)
-	`, p.ID, callerID, today).Scan(&p.MyCheckinToday); err != nil {
+	`, p.ID, callerID, currentWeek).Scan(&p.MyCheckinToday); err != nil {
 		return fmt.Errorf("load my checkin: %w", err)
 	}
 
-	// Partner checkin today
+	// Partner weekly checkin
 	partnerID := p.PartnerID
 	if callerID == p.PartnerID {
 		partnerID = p.RequesterID
@@ -1001,7 +1211,7 @@ func (r *Repository) enrichPartnership(ctx context.Context, p *models.Partnershi
 			SELECT 1 FROM partnership_daily
 			WHERE partnership_id = $1 AND user_id = $2 AND activity_date = $3
 		)
-	`, p.ID, partnerID, today).Scan(&p.PartnerCheckin); err != nil {
+	`, p.ID, partnerID, currentWeek).Scan(&p.PartnerCheckin); err != nil {
 		return fmt.Errorf("load partner checkin: %w", err)
 	}
 
@@ -1010,32 +1220,60 @@ func (r *Repository) enrichPartnership(ctx context.Context, p *models.Partnershi
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
-func (r *Repository) GetLeaderboard(ctx context.Context, sortBy string) ([]models.LeaderboardEntry, error) {
-	orderClause := "up.total_xp DESC, up.streak_days DESC"
-	switch sortBy {
-	case "streak":
-		orderClause = "up.streak_days DESC, up.total_xp DESC"
-	case "level":
-		orderClause = "up.current_level DESC, up.total_xp DESC"
+func (r *Repository) GetLeaderboard(ctx context.Context, sortBy, period string) ([]models.LeaderboardEntry, error) {
+	weekStart, weekEnd := leaderboardWeekBounds(time.Now())
+
+	orderClause := "total_xp DESC, streak_days DESC, username ASC"
+	if period == "weekly" {
+		orderClause = "weekly_xp DESC, total_xp DESC, streak_days DESC, username ASC"
+	} else {
+		switch sortBy {
+		case "streak":
+			orderClause = "streak_days DESC, total_xp DESC, username ASC"
+		case "level":
+			orderClause = "current_level DESC, total_xp DESC, username ASC"
+		}
 	}
 
 	query := fmt.Sprintf(`
+		WITH achievement_totals AS (
+			SELECT user_id, COUNT(*) AS achievements_unlocked
+			FROM user_achievements
+			GROUP BY user_id
+		),
+		weekly_totals AS (
+			SELECT user_id, COALESCE(SUM(xp_gained), 0) AS weekly_xp
+			FROM xp_history
+			WHERE created_at >= $1 AND created_at < $2
+			GROUP BY user_id
+		),
+		leaderboard_base AS (
+			SELECT
+				u.username,
+				up.total_xp,
+				up.current_level,
+				up.streak_days,
+				COALESCE(at.achievements_unlocked, 0) AS achievements_unlocked,
+				COALESCE(wt.weekly_xp, 0) AS weekly_xp
+			FROM users u
+			JOIN user_progress up ON up.user_id = u.id
+			LEFT JOIN achievement_totals at ON at.user_id = u.id
+			LEFT JOIN weekly_totals wt ON wt.user_id = u.id
+		)
 		SELECT
 			RANK() OVER (ORDER BY %s) AS rank,
-			u.username,
-			up.total_xp,
-			up.current_level,
-			up.streak_days,
-			COUNT(ua.id) AS achievements_unlocked
-		FROM users u
-		JOIN user_progress up ON up.user_id = u.id
-		LEFT JOIN user_achievements ua ON ua.user_id = u.id
-		GROUP BY u.username, up.total_xp, up.current_level, up.streak_days
+			username,
+			total_xp,
+			current_level,
+			streak_days,
+			achievements_unlocked,
+			weekly_xp
+		FROM leaderboard_base
 		ORDER BY %s
 		LIMIT 10
 	`, orderClause, orderClause)
 
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.pool.Query(ctx, query, weekStart, weekEnd)
 	if err != nil {
 		return nil, fmt.Errorf("get leaderboard: %w", err)
 	}
@@ -1044,7 +1282,7 @@ func (r *Repository) GetLeaderboard(ctx context.Context, sortBy string) ([]model
 	var result []models.LeaderboardEntry
 	for rows.Next() {
 		var e models.LeaderboardEntry
-		if err := rows.Scan(&e.Rank, &e.Username, &e.TotalXP, &e.CurrentLevel, &e.StreakDays, &e.AchievementsUnlocked); err != nil {
+		if err := rows.Scan(&e.Rank, &e.Username, &e.TotalXP, &e.CurrentLevel, &e.StreakDays, &e.AchievementsUnlocked, &e.WeeklyXP); err != nil {
 			return nil, err
 		}
 		result = append(result, e)

@@ -97,19 +97,36 @@ type DailyGoalFull struct {
 }
 
 type Partnership struct {
-	ID              uuid.UUID  `json:"id"`
-	RequesterID     uuid.UUID  `json:"requester_id"`
-	RequesterName   string     `json:"requester_name"`
-	PartnerID       uuid.UUID  `json:"partner_id"`
-	PartnerName     string     `json:"partner_name"`
-	Status          string     `json:"status"`
-	StreakDays      int        `json:"streak_days"`
-	LastBothDate    *time.Time `json:"last_both_date,omitempty"`
-	SavesRemaining  int        `json:"saves_remaining"`
-	SavesResetDate  *time.Time `json:"saves_reset_date,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	MyCheckinToday  bool       `json:"my_checkin_today"`
-	PartnerCheckin  bool       `json:"partner_checkin_today"`
+	ID             uuid.UUID  `json:"id"`
+	RequesterID    uuid.UUID  `json:"requester_id"`
+	RequesterName  string     `json:"requester_name"`
+	PartnerID      uuid.UUID  `json:"partner_id"`
+	PartnerName    string     `json:"partner_name"`
+	Status         string     `json:"status"`
+	StreakDays     int        `json:"streak_days"`
+	LastBothDate   *time.Time `json:"last_both_date,omitempty"`
+	SavesRemaining int        `json:"saves_remaining"`
+	SavesResetDate *time.Time `json:"saves_reset_date,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	MyCheckinToday bool       `json:"my_checkin_today"`
+	PartnerCheckin bool       `json:"partner_checkin_today"`
+}
+
+type Friend struct {
+	UserID                uuid.UUID  `json:"user_id"`
+	Username              string     `json:"username"`
+	FriendsSince          time.Time  `json:"friends_since"`
+	HasActivePartnership  bool       `json:"has_active_partnership"`
+	PartnershipID         *uuid.UUID `json:"partnership_id,omitempty"`
+	PartnershipStreakDays int        `json:"partnership_streak_days"`
+}
+
+type UserSearchResult struct {
+	ID                uuid.UUID  `json:"id"`
+	Username          string     `json:"username"`
+	IsFriend          bool       `json:"is_friend"`
+	PartnershipID     *uuid.UUID `json:"partnership_id,omitempty"`
+	PartnershipStatus string     `json:"partnership_status,omitempty"`
 }
 
 type LeaderboardEntry struct {
@@ -119,4 +136,5 @@ type LeaderboardEntry struct {
 	CurrentLevel         int    `json:"current_level"`
 	StreakDays           int    `json:"streak_days"`
 	AchievementsUnlocked int    `json:"achievements_unlocked"`
+	WeeklyXP             int    `json:"weekly_xp"`
 }
