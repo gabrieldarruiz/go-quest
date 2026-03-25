@@ -468,24 +468,22 @@ export default function GoQuest() {
         </div>
 
         {/* TABS */}
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 20, position: "relative" }}>
           <div style={{ display: "flex", borderBottom: "1px solid #1a1a2e", overflowX: "auto" }}>
             {primaryTabs.map(([id, label]) => (
-              <button key={id} className={`tbtn${tab === id ? " act" : ""}`} onClick={() => { setTab(id); if (id === "chat") setChatUnread(0); }}>{label}</button>
+              <button key={id} className={`tbtn${tab === id ? " act" : ""}`} onClick={() => { setTab(id); if (id === "chat") setChatUnread(0); setShowSecondary(false); }}>{label}</button>
             ))}
-            <div style={{ position: "relative", marginLeft: "auto" }}>
-              <button className={`tbtn${secondaryTabs.some(([id]) => id === tab) ? " act" : ""}`} onClick={() => setShowSecondary(v => !v)}>
-                // MAIS {secondaryTabs.some(([id]) => id === tab) ? "▲" : "▼"}
-              </button>
-              {showSecondary && (
-                <div style={{ position: "absolute", right: 0, top: "100%", background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, zIndex: 50, minWidth: 180 }}>
-                  {secondaryTabs.map(([id, label]) => (
-                    <button key={id} onClick={() => { setTab(id); setShowSecondary(false); }} style={{ display: "block", width: "100%", background: tab === id ? "#ff2d7811" : "none", border: "none", borderBottom: "1px solid #1a1a2e", color: tab === id ? "#ff2d78" : "#888", fontFamily: "monospace", fontSize: 13, padding: "10px 16px", cursor: "pointer", textAlign: "left", letterSpacing: 1 }}>{label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button className={`tbtn${secondaryTabs.some(([id]) => id === tab) ? " act" : ""}`} onClick={() => setShowSecondary(v => !v)} style={{ marginLeft: "auto", flexShrink: 0 }}>
+              // MAIS {secondaryTabs.some(([id]) => id === tab) ? "▲" : "▼"}
+            </button>
           </div>
+          {showSecondary && (
+            <div style={{ position: "absolute", right: 0, top: "100%", background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, zIndex: 100, minWidth: 200 }}>
+              {secondaryTabs.map(([id, label]) => (
+                <button key={id} onClick={() => { setTab(id); setShowSecondary(false); }} style={{ display: "block", width: "100%", background: tab === id ? "#ff2d7811" : "none", border: "none", borderBottom: "1px solid #1a1a2e", color: tab === id ? "#ff2d78" : "#888", fontFamily: "monospace", fontSize: 13, padding: "10px 16px", cursor: "pointer", textAlign: "left", letterSpacing: 1 }}>{label}</button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* CONTEÚDO */}
