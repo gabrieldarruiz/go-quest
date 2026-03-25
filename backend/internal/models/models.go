@@ -143,3 +143,31 @@ type LeaderboardEntry struct {
 	AchievementsUnlocked int    `json:"achievements_unlocked"`
 	WeeklyXP             int    `json:"weekly_xp"`
 }
+
+// Chat models
+
+type GlobalMessage struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Username  string    `json:"username"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type DirectMessage struct {
+	ID         uuid.UUID  `json:"id"`
+	SenderID   uuid.UUID  `json:"sender_id"`
+	ReceiverID uuid.UUID  `json:"receiver_id"`
+	Content    string     `json:"content"`
+	ReadAt     *time.Time `json:"read_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// DMConversation representa um amigo + contagem de msgs não lidas
+type DMConversation struct {
+	FriendID    uuid.UUID `json:"friend_id"`
+	Username    string    `json:"username"`
+	UnreadCount int       `json:"unread_count"`
+	LastMessage string    `json:"last_message,omitempty"`
+	LastAt      time.Time `json:"last_at,omitempty"`
+}

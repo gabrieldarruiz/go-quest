@@ -109,3 +109,21 @@ export const getProgress = (userID) =>
 
 export const aiChat = (messages, system, maxTokens = 900) =>
   req("POST", "/ai/chat", { messages, system, max_tokens: maxTokens });
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+
+const WS_BASE = (import.meta.env.VITE_API_URL || "http://localhost:8081")
+  .replace(/^http/, "ws")
+  .replace(/\/api$/, "");
+
+export const connectChatWS = (userID) =>
+  new WebSocket(`${WS_BASE}/ws?userID=${userID}`);
+
+export const getGlobalHistory = (limit = 50) =>
+  req("GET", `/chat/global/history?limit=${limit}`);
+
+export const getDMHistory = (userID, friendID, limit = 50, before = "") =>
+  req("GET", `/users/${userID}/dm/${friendID}/history?limit=${limit}${before ? `&before=${before}` : ""}`);
+
+export const getDMConversations = (userID) =>
+  req("GET", `/users/${userID}/dm/conversations`);

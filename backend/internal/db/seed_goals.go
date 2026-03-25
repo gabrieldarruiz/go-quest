@@ -231,7 +231,7 @@ func SeedGoalTemplates(ctx context.Context, pool *pgxpool.Pool) error {
 		_, err := pool.Exec(ctx, `
 			INSERT INTO goal_templates (title, description, category, min_level, max_level, xp_reward, difficulty)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			ON CONFLICT DO NOTHING
+			ON CONFLICT (title) DO NOTHING
 		`, t.title, t.desc, t.category, t.minLevel, t.maxLevel, t.xpReward, t.difficulty)
 		if err != nil {
 			return fmt.Errorf("seed goal template %q: %w", t.title, err)

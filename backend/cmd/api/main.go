@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 
+	"github.com/darraos/go-quest-backend/internal/chat"
 	"github.com/darraos/go-quest-backend/internal/db"
 	"github.com/darraos/go-quest-backend/internal/handlers"
 	"github.com/darraos/go-quest-backend/internal/repository"
@@ -54,19 +55,32 @@ func main() {
 		os.Getenv("OPENAI_MODEL"),
 	)
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
-	r.Use(cors.Handler(cors.Options{
+	chatHub := chat.NewHub()
+	ch := handlers.NewChatHandler(h, chatHub)
+
+	corsMiddleware := cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: false,
 		MaxAge:           300,
-	}))
+	})
 
-	r.Route("/api", func(r chi.Router) {
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(corsMiddleware)
+
+	// WebSocket — sem timeout (conexão de longa vida)
+	r.Group(func(r chi.Router) {
+		r.Get("/ws", ch.ServeWS)
+	})
+
+	// Rotas REST — com timeout de 30s
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Timeout(30 * time.Second))
+
+		r.Route("/api", func(r chi.Router) {
 		r.Route("/ai", func(r chi.Router) {
 			r.Post("/chat", h.AIChat)
 		})
@@ -102,6 +116,11 @@ func main() {
 
 		r.Get("/leaderboard", h.GetLeaderboard)
 
+		// Chat REST
+		r.Get("/chat/global/history", ch.GetGlobalHistory)
+		r.Get("/users/{userID}/dm/conversations", ch.GetDMConversations)
+		r.Get("/users/{userID}/dm/{friendID}/history", ch.GetDMHistory)
+
 		r.Route("/users/{userID}/partnerships", func(r chi.Router) {
 			r.Post("/", h.CreatePartnership)
 			r.Get("/", h.GetUserPartnerships)
@@ -111,7 +130,8 @@ func main() {
 			r.Post("/{partnershipID}/checkin", h.PartnershipCheckin)
 			r.Post("/{partnershipID}/save", h.SavePartner)
 		})
-	})
+		}) // fecha r.Route("/api")
+	}) // fecha r.Group (com timeout)
 
 	port := os.Getenv("PORT")
 	if port == "" {

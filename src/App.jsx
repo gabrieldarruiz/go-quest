@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as api from "./api.js";
+import ChatTab from "./ChatTab.jsx";
 
 // ─── DATA ───────────────────────────────────────────────────────────────────
 
@@ -998,7 +999,7 @@ export default function GoQuest() {
     }
   }, [userID, showNotif]);
 
-  const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["parcerias","// PARCERIAS"],["ranking","// RANKING"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
+  const tabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["parcerias","// PARCERIAS"],["ranking","// RANKING"],["chat","// CHAT"],["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
   const resetToken = hashSearchParams().get("token") || "";
 
   if (route === "/") {
@@ -1653,6 +1654,13 @@ export default function GoQuest() {
         {/* ── MENTOR ── */}
         {tab === "mentor" && (
           <MentorTab unlocked={unlocked} totalXP={totalXP} currentLevel={currentLevel} todayDone={todayDone} />
+        )}
+
+        {/* ── CHAT ── */}
+        {tab === "chat" && (
+          <div style={{ height: 560 }}>
+            <ChatTab user={{ id: userID, username: localStorage.getItem("goquest_username") }} />
+          </div>
         )}
 
         {/* FOOTER */}
