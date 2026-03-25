@@ -1,3 +1,4 @@
+import { useState } from "react";
 import * as api from "../api.js";
 
 export default function ParceriasTab({
@@ -5,12 +6,19 @@ export default function ParceriasTab({
   userSearch, setUserSearch, userResults, userSearchLoading, userSearchError,
   partnerError, setPartnerError, runUserSearch, loadSummary, loadFriends, loadPartnerships, showNotif,
 }) {
-  const copyMyID = async () => {
-    if (!userID || !navigator?.clipboard?.writeText) return;
-    try {
-      await navigator.clipboard.writeText(userID);
-      showNotif({ icon: "⎘", title: "ID copiado", desc: "Seu UUID foi para a area de transferencia." });
-    } catch {}
+  const [showPartnerHelp, setShowPartnerHelp] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("gq_partnerHelp_seen") !== "1";
+  });
+
+  const openPartnerHelp = () => {
+    setShowPartnerHelp(true);
+    localStorage.removeItem("gq_partnerHelp_seen");
+  };
+
+  const closePartnerHelp = () => {
+    setShowPartnerHelp(false);
+    localStorage.setItem("gq_partnerHelp_seen", "1");
   };
 
   return (
@@ -27,12 +35,12 @@ export default function ParceriasTab({
         </div>
       </div>
 
-      {/* Onboarding */}
-      {!localStorage.getItem("gq_partnerHelp_seen") && (
+      {/* Ajuda */}
+      {showPartnerHelp ? (
         <div style={{ background: "#0a0a0f", border: "1px solid #00cfff22", borderRadius: 4, padding: 14, marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12 }}>
             <div style={{ fontSize: 12, color: "#00cfff", letterSpacing: 2 }}>// COMO FUNCIONAM AS PARCERIAS</div>
-            <button onClick={() => localStorage.setItem("gq_partnerHelp_seen", "1")} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 12 }}>✕ fechar</button>
+            <button onClick={closePartnerHelp} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕ fechar</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[["📅 Check-in semanal","Você e seu parceiro fazem check-in uma vez por semana. Ambos devem fazer para o streak avançar."],["🔥 Streak de semanas","Cada semana que os dois fizeram check-in conta +1 no streak. Não percam o ritmo."],["💾 Saves","A cada 4 semanas de streak pessoal você ganha 1 save. Use para cobrir uma semana perdida sua ou do parceiro."],["🤝 Amizade automática","Ao aceitar uma parceria, vocês viram amigos automaticamente e podem se ver na aba de chat."]].map(([title, desc]) => (
@@ -43,6 +51,26 @@ export default function ParceriasTab({
             ))}
           </div>
         </div>
+      ) : (
+        <button
+          onClick={openPartnerHelp}
+          style={{
+            width: "100%",
+            background: "#0a0a0f",
+            border: "1px solid #00cfff22",
+            borderRadius: 4,
+            padding: "12px 14px",
+            marginBottom: 16,
+            color: "#00cfff",
+            cursor: "pointer",
+            textAlign: "left",
+            fontSize: 12,
+            letterSpacing: 2,
+          }}
+        >
+          // COMO FUNCIONAM AS PARCERIAS
+          <span style={{ color: "#666", letterSpacing: 0, marginLeft: 10 }}>mostrar</span>
+        </button>
       )}
 
       {/* Busca */}
@@ -93,16 +121,6 @@ export default function ParceriasTab({
             })}
           </div>
         )}
-      </div>
-
-      {/* ID fallback */}
-      <div style={{ background: "#0a0a0f", border: "1px solid #1a1a2e", borderRadius: 4, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 2, marginBottom: 12 }}>// ID DE CONVITE (FALLBACK)</div>
-        <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>Se precisar, ainda da para compartilhar seu UUID manualmente.</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ flex: 1, background: "#111", border: "1px solid #2a2a3e", borderRadius: 3, padding: "8px 10px", color: "#bbb", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }}>{userID || "sem sessao"}</div>
-          <button onClick={copyMyID} style={{ background: "transparent", border: "1px solid #2a2a3e", borderRadius: 3, color: "#888", padding: "8px 16px", fontSize: 12, cursor: "pointer" }}>Copiar</button>
-        </div>
       </div>
 
       {/* Amigos */}

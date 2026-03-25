@@ -91,31 +91,13 @@ function MentorTab({ unlocked, totalXP, currentLevel, todayDone }) {
 
 // ─── PomodoroTab ──────────────────────────────────────────────────────────────
 
-function PomodoroTab({ userID, running, setRunning, seconds, setSeconds, isBreak, setIsBreak, sessions, setSessions }) {
+function PomodoroTab({ userID, running, setRunning, seconds, isBreak, sessions, setSessions, onReset }) {
   const WORK = 25 * 60, BREAK = 5 * 60;
-  const ref = useRef(null);
-  const reset = () => { clearInterval(ref.current); setRunning(false); setIsBreak(false); setSeconds(WORK); };
 
   useEffect(() => {
     if (!userID) return;
     api.getPomodoroToday(userID).then(d => setSessions(d.sessions_today)).catch(() => {});
   }, [userID]);
-
-  useEffect(() => {
-    if (!running) return;
-    ref.current = setInterval(() => {
-      setSeconds(s => {
-        if (s > 1) return s - 1;
-        clearInterval(ref.current); setRunning(false);
-        if (!isBreak) {
-          setSessions(n => n + 1);
-          if (userID) api.createPomodoro(userID, "work", 25).catch(() => {});
-          setIsBreak(true); return BREAK;
-        } else { setIsBreak(false); return WORK; }
-      });
-    }, 1000);
-    return () => clearInterval(ref.current);
-  }, [running, isBreak, userID, BREAK, WORK]);
 
   const total = isBreak ? BREAK : WORK;
   const pct = ((total - seconds) / total) * 100;
@@ -142,7 +124,7 @@ function PomodoroTab({ userID, running, setRunning, seconds, setSeconds, isBreak
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <button onClick={() => setRunning(r => !r)} style={{ background: running ? "#ff2d7822" : "#a855f722", border: `1px solid ${running ? "#ff2d7855" : "#a855f755"}`, color: running ? "#ff2d78" : "#a855f7", fontFamily: "monospace", fontSize: 13, padding: "8px 14px", borderRadius: 3, cursor: "pointer" }}>{running ? "⏸ PAUSAR" : "▶ INICIAR"}</button>
-              <button onClick={reset} style={{ background: "transparent", border: "1px solid #1a1a2e", color: "#555", fontFamily: "monospace", fontSize: 13, padding: "8px 12px", borderRadius: 3, cursor: "pointer" }} title="Resetar timer">↺</button>
+              <button onClick={onReset} style={{ background: "transparent", border: "1px solid #1a1a2e", color: "#555", fontFamily: "monospace", fontSize: 13, padding: "8px 12px", borderRadius: 3, cursor: "pointer" }} title="Resetar timer">↺</button>
             </div>
             <div style={{ fontSize: 12, color: "#bbb", marginBottom: 8 }}>SESSÕES: <span style={{ color: "#a855f7", fontSize: 22, fontFamily: "monospace" }}>{sessions}</span></div>
             <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
@@ -208,6 +190,29 @@ export default function GoQuest() {
   useEffect(() => { setAuthError(""); setAuthMessage(""); }, [route]);
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { const t = setInterval(() => setPulse(v => !v), 1500); return () => clearInterval(t); }, []);
+
+  // ── Timer do Pomodoro — roda no pai para não parar ao trocar de aba ──────────
+  const pomTimerRef = useRef(null);
+  const WORK = 25 * 60, BREAK = 5 * 60;
+  const pomReset = useCallback(() => {
+    clearInterval(pomTimerRef.current);
+    setPomRunning(false); setPomIsBreak(false); setPomSeconds(WORK);
+  }, []);
+  useEffect(() => {
+    if (!pomRunning) return;
+    pomTimerRef.current = setInterval(() => {
+      setPomSeconds(s => {
+        if (s > 1) return s - 1;
+        clearInterval(pomTimerRef.current); setPomRunning(false);
+        if (!pomIsBreak) {
+          setPomSessions(n => n + 1);
+          if (userID) api.createPomodoro(userID, "work", 25).catch(() => {});
+          setPomIsBreak(true); return BREAK;
+        } else { setPomIsBreak(false); return WORK; }
+      });
+    }, 1000);
+    return () => clearInterval(pomTimerRef.current);
+  }, [pomRunning, pomIsBreak, userID]);
 
   const currentLevel = [...LEVELS].reverse().find(l => totalXP >= l.xpMin) || LEVELS[0];
   const nextLevel = LEVELS.find(l => l.id === currentLevel.id + 1);
@@ -489,7 +494,7 @@ export default function GoQuest() {
         {/* CONTEÚDO */}
         {tab === "hoje" && <HojeTab dailyGoals={dailyGoals} todayDone={todayDone} loading={loading} toggleG={toggleG} toggleA={toggleA} unlocked={unlocked} currentLevel={currentLevel} />}
         {tab === "trilha" && <TrilhaTab unlocked={unlocked} toggleA={toggleA} currentLevel={currentLevel} />}
-        {tab === "timer" && <PomodoroTab userID={userID} running={pomRunning} setRunning={setPomRunning} seconds={pomSeconds} setSeconds={setPomSeconds} isBreak={pomIsBreak} setIsBreak={setPomIsBreak} sessions={pomSessions} setSessions={setPomSessions} />}
+        {tab === "timer" && <PomodoroTab userID={userID} running={pomRunning} setRunning={setPomRunning} seconds={pomSeconds} isBreak={pomIsBreak} sessions={pomSessions} setSessions={setPomSessions} onReset={pomReset} />}
         {tab === "parcerias" && (
           <ParceriasTab
             userID={userID} mySaveBalance={mySaveBalance} friends={friends} partnerships={partnerships}
