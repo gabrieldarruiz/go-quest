@@ -16,7 +16,7 @@ function formatTime(ts) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function ChatTab({ user }) {
+export default function ChatTab({ user, onUnreadChange }) {
   const [tab, setTab] = useState("global"); // "global" | "dm"
   const [conversations, setConversations] = useState([]); // lista de amigos + unread
   const [selectedFriend, setSelectedFriend] = useState(null);
@@ -209,6 +209,10 @@ export default function ChatTab({ user }) {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0);
+
+  useEffect(() => {
+    onUnreadChange?.(totalUnread);
+  }, [totalUnread, onUnreadChange]);
 
   return (
     <div style={styles.container}>
