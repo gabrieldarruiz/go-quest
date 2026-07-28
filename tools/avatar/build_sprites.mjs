@@ -29,7 +29,7 @@ for (const [ch, hx] of Object.entries(src.palette)) {
 }
 
 // ── pad para a grade do jogo ─────────────────────────────────────────────────
-const PAD_L = 2, PAD_T = 3, PAD_B = 2;
+const PAD_L = 2, PAD_T = 8, PAD_B = 2;
 export const W = src.width + PAD_L + 2;   // 38
 export const H = src.height + PAD_T + PAD_B; // 52
 const grid = () => Array.from({ length: H }, () => Array(W).fill("."));
@@ -169,6 +169,117 @@ export function genCoat() {
   return g;
 }
 
+// ── CABELO SAIYAJIN: topete espetado preto sobre a cabeça ────────────────────
+export function genGokuHair() {
+  const g = grid();
+  const eyeTop = Math.round(M.eyeL.cy - M.eyeL.r);
+  // base do cabelo cobrindo o topo da cabeça (segue a borda medida)
+  for (let y = M.headTop; y < eyeTop; y++) {
+    const [lo, hi] = M.edges[y];
+    if (lo < 0) continue;
+    rect(g, y, y, lo, hi, "k");
+  }
+  // espigões separados com alturas escalonadas (vales visíveis entre eles)
+  const cx = W / 2;
+  const spikes = [
+    [cx - 12, 4, 0.75], [cx - 6, 6, 0.7], [cx, 8, 0.65],
+    [cx + 6, 6, 0.7], [cx + 12, 4, 0.75],
+  ];
+  for (const [sx, h, slope] of spikes) {
+    const peak = M.headTop - h;
+    for (let y = peak; y < M.headTop + 2; y++) {
+      const hw = Math.max(0, (y - peak) * slope + 0.4);
+      rect(g, y, y, Math.round(sx - hw), Math.round(sx + hw), "k");
+    }
+  }
+  outline(g);
+  // brilhos
+  put(g, M.headTop - 3, Math.round(cx - 3), "K");
+  put(g, M.headTop - 2, Math.round(cx + 2), "K");
+  put(g, M.headTop - 1, Math.round(cx - 7), "K");
+  return g;
+}
+
+// ── CHAPÉU DE PALHA: domo amarelo, fita vermelha, aba larga ──────────────────
+export function genStrawHat() {
+  const g = grid();
+  const eyeTop = Math.round(M.eyeL.cy - M.eyeL.r);
+  const brimY = eyeTop - 3;
+  const bandTop = brimY - 2;
+  const domeTop = Math.max(0, bandTop - 6);
+  const cx = W / 2;
+  const headHW = (M.edges[eyeTop][1] - M.edges[eyeTop][0]) / 2;
+  // domo alto e redondo
+  for (let y = domeTop; y < bandTop; y++) {
+    const t = (y - domeTop) / Math.max(1, bandTop - domeTop);
+    const hw = (headHW - 2) * Math.sqrt(Math.max(0.15, 1 - (1 - t) ** 2));
+    for (let x = 0; x < W; x++) if (Math.abs(x + 0.5 - cx) <= hw) g[y][x] = "Y";
+  }
+  // fita vermelha (2 linhas)
+  rect(g, bandTop, bandTop + 1, Math.round(cx - headHW + 2), Math.round(cx + headHW - 3), "r");
+  // aba larga e grossa
+  rect(g, brimY, brimY + 2, Math.max(1, Math.round(cx - headHW - 5)), Math.min(W - 2, Math.round(cx + headHW + 4)), "Y");
+  outline(g);
+  // trama da palha
+  for (let x = 3; x < W - 3; x += 3) { if (g[brimY + 1][x] === "Y") g[brimY + 1][x] = "y"; }
+  put(g, domeTop + 2, Math.round(cx - 4), "y"); put(g, domeTop + 3, Math.round(cx + 3), "y"); put(g, domeTop + 1, Math.round(cx + 1), "y");
+  return g;
+}
+
+// ── GI LARANJA: túnica no tronco com gola V e faixa azul ─────────────────────
+export function genGokuGi() {
+  const g = grid();
+  const top = Math.round(H * 0.66), sash = Math.round(H * 0.79), hem = Math.round(H * 0.86);
+  for (let y = top; y <= hem; y++) {
+    const [lo, hi] = M.edges[y];
+    if (lo < 0) continue;
+    rect(g, y, y, lo, hi, "C");
+  }
+  // gola V com camiseta azul por baixo
+  const cx = Math.floor(W / 2);
+  for (let i = 0; i < 3; i++) rect(g, top + i, top + i, cx - 3 + i, cx + 2 - i, "B");
+  // faixa azul
+  for (let y = sash; y <= sash + 1; y++) {
+    const [lo, hi] = M.edges[y];
+    rect(g, y, y, lo + 1, hi - 1, "B");
+  }
+  outline(g);
+  // amarração da faixa
+  put(g, sash + 2, cx - 1, "B"); put(g, sash + 2, cx, "B"); put(g, sash + 3, cx - 2, "B");
+  // dobras
+  for (let y = top + 2; y < sash - 1; y++) {
+    const [lo, hi] = M.edges[y];
+    if (g[y][lo + 3] === "C") g[y][lo + 3] = "D";
+    if (g[y][hi - 3] === "C") g[y][hi - 3] = "S";
+  }
+  return g;
+}
+
+// ── COLETE DO PIRATA: colete vermelho aberto ─────────────────────────────────
+export function genLuffyVest() {
+  const g = grid();
+  const top = Math.round(H * 0.64), hem = Math.round(H * 0.88);
+  for (let y = top; y <= hem; y++) {
+    const [lo, hi] = M.edges[y];
+    if (lo < 0) continue;
+    rect(g, y, y, Math.max(0, lo - 1), lo + 5, "C");
+    rect(g, y, y, hi - 5, Math.min(W - 1, hi + 1), "C");
+  }
+  // ombros fechando no pescoço
+  const [slo, shi] = M.edges[top];
+  rect(g, top - 1, top - 1, slo + 1, slo + 7, "C");
+  rect(g, top - 1, top - 1, shi - 7, shi - 1, "C");
+  outline(g);
+  // dobras
+  for (let y = top + 1; y < hem; y++) {
+    const [lo, hi] = M.edges[y];
+    if (lo < 0) continue;
+    if (g[y][lo + 3] === "C") g[y][lo + 3] = "D";
+    if (g[y][hi - 3] === "C") g[y][hi - 3] = "S";
+  }
+  return g;
+}
+
 // ── emite sprites.js ─────────────────────────────────────────────────────────
 const rows = g => g.map(r => `    "${r.join("")}",`).join("\n");
 
@@ -237,16 +348,52 @@ ${rows(genCoat())}
   ],
 };
 
+const GOKU_HAIR = {
+  palette: { k: "#16161e", K: "#30323f" },
+  rows: [
+${rows(genGokuHair())}
+  ],
+};
+
+const STRAW_HAT = {
+  palette: { Y: "#e8c86a", y: "#c8a44a", r: "#c83232" },
+  rows: [
+${rows(genStrawHat())}
+  ],
+};
+
+const GOKU_GI = {
+  palette: { C: "#e8862c", D: "#f2a04c", S: "#c26a1e", B: "#2a4a8a" },
+  rows: [
+${rows(genGokuGi())}
+  ],
+};
+
+const LUFFY_VEST = {
+  palette: { C: "#d83030", D: "#ef5a4a", S: "#a82424" },
+  rows: [
+${rows(genLuffyVest())}
+  ],
+};
+
 export const ITEM_SPRITES = {
   hat_beanie_black: BEANIE_BLACK,
   glasses_round_black: GLASSES_ROUND,
   outfit_coat_black: COAT_BLACK,
+  hat_goku: GOKU_HAIR,
+  hat_straw: STRAW_HAT,
+  outfit_goku: GOKU_GI,
+  outfit_luffy: LUFFY_VEST,
 };
 
 export const ITEMS = [
-  { id: "hat_beanie_black",    name: "Gorro Preto",    slot: "hat" },
-  { id: "glasses_round_black", name: "Óculos Redondo", slot: "glasses" },
-  { id: "outfit_coat_black",   name: "Casaco Trench",  slot: "outfit" },
+  { id: "hat_beanie_black",    name: "Gorro Preto",      slot: "hat" },
+  { id: "hat_goku",            name: "Cabelo Saiyajin",  slot: "hat" },
+  { id: "hat_straw",           name: "Chapéu de Palha",  slot: "hat" },
+  { id: "glasses_round_black", name: "Óculos Redondo",   slot: "glasses" },
+  { id: "outfit_coat_black",   name: "Casaco Trench",    slot: "outfit" },
+  { id: "outfit_goku",         name: "Gi Laranja",       slot: "outfit" },
+  { id: "outfit_luffy",        name: "Colete do Pirata", slot: "outfit" },
 ];
 
 // Ordem de pintura: corpo → casaco → óculos → gorro
@@ -290,11 +437,20 @@ const PAL = {
   w: "#f8f8f8", m: "#f8e8b9", F: "#d6a878",
   k: "#191a24", K: "#2a2c3c", s: "#0e0f16", R: "#1c1e28", L: "#07080d", G: "#3a3f52",
   C: "#1b1d29", D: "#2c2f42", S: "#0d0e15",
+  Y: "#e8c86a", y: "#c8a44a", r: "#c83232", B: "#2a4a8a",
 };
+const GOKU_PAL = { k: "#16161e", K: "#30323f", C: "#e8862c", D: "#f2a04c", S: "#c26a1e" };
+const LUFFY_PAL = { C: "#d83030", D: "#ef5a4a", S: "#a82424" };
 const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const b = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(b)); return Buffer.concat([l, b, c]); };
-const layersList = [[genBase()], [genBase(), genCoat(), genGlasses(), genBeanie()]];
+// cada camada: [grid, paletaExtra] — a paleta extra vence o PAL global
+const layersList = [
+  [[genBase(), null]],
+  [[genBase(), null], [genCoat(), null], [genGlasses(), null], [genBeanie(), null]],
+  [[genBase(), null], [genGokuGi(), GOKU_PAL], [genGokuHair(), GOKU_PAL]],
+  [[genBase(), null], [genLuffyVest(), LUFFY_PAL], [genStrawHat(), null]],
+];
 const S = 9, sep = 2, PW = layersList.length * W * S + sep * S, PH = H * S;
 const raw = Buffer.alloc(PH * (1 + PW * 4));
 const bghex = [0x3a, 0x2a, 0x4a];
@@ -307,8 +463,9 @@ for (let y = 0; y < PH; y++) {
     if (gi < layersList.length && lx < W * S) {
       const layers = layersList[gi];
       for (let li = layers.length - 1; li >= 0; li--) {
-        const ch = layers[li][Math.floor(y / S)][Math.floor(lx / S)];
-        if (ch !== ".") { rgb = [1, 3, 5].map(i => parseInt(PAL[ch].slice(i, i + 2), 16)); break; }
+        const [lg, lpal] = layers[li];
+        const ch = lg[Math.floor(y / S)][Math.floor(lx / S)];
+        if (ch !== ".") { const hx = (lpal && lpal[ch]) || PAL[ch]; rgb = [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16)); break; }
       }
     }
     const o = rs + 1 + x * 4;

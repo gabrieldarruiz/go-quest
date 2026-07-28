@@ -41,6 +41,12 @@ var cosmeticItems = []cosmeticSeed{
 	{"hat_beanie_black", "Gorro Preto", "hat", "common", nil, "default", nil, 20},
 	{"glasses_round_black", "Óculos Redondo", "glasses", "common", nil, "default", nil, 21},
 	{"outfit_coat_black", "Casaco Trench", "outfit", "common", nil, "default", nil, 22},
+
+	// ── Looks inspirados em animes ────────────────────────────────────────────
+	{"hat_goku", "Cabelo Saiyajin", "hat", "epic", nil, "default", nil, 23},
+	{"outfit_goku", "Gi Laranja", "outfit", "epic", nil, "default", nil, 24},
+	{"hat_straw", "Chapéu de Palha", "hat", "epic", nil, "default", nil, 25},
+	{"outfit_luffy", "Colete do Pirata", "outfit", "epic", nil, "default", nil, 26},
 }
 
 // SeedCosmetics insere/atualiza o catálogo de cosméticos (idempotente).
