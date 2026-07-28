@@ -7,16 +7,23 @@ export const GRID_H = 52;
 
 // Skins trocam os 4 tons do corpo (b=corpo, d=sombra, l=sombra profunda, e=anel dos olhos)
 export const SKINS = {
-  skin_azul:    { name: "Azul Clássico", b: "#8ce8f8", d: "#56c6d6", l: "#42a0b9", e: "#186378" },
-  skin_aqua:    { name: "Aqua",          b: "#57c2d4", d: "#3fa3b6", l: "#2e8496", e: "#1d5c6c" },
-  skin_cinza:   { name: "Cinza",         b: "#aeb6c0", d: "#868e99", l: "#666e79", e: "#454b55" },
-  skin_roxo:    { name: "Roxo",          b: "#bfa0e8", d: "#9878cc", l: "#7a58ab", e: "#533a78" },
-  skin_marinho: { name: "Azul Royal",    b: "#7c9ce0", d: "#5878c4", l: "#4058a0", e: "#2c3d74" },
-  skin_rosa:    { name: "Rosa",          b: "#f2aac6", d: "#d688a8", l: "#b06888", e: "#7d4560" },
-  skin_amarelo: { name: "Amarelo Claro", b: "#f8e88c", d: "#e0c45c", l: "#bf9c3d", e: "#8a6b1d" },
-  skin_mostarda:{ name: "Mostarda",      b: "#e0b83c", d: "#bf9428", l: "#99721d", e: "#6b4e12" },
-  skin_verde:   { name: "Verde Claro",   b: "#a8e8a0", d: "#78c878", l: "#55a458", e: "#2f7038" },
-  skin_musgo:   { name: "Verde Musgo",   b: "#8aa860", d: "#6b8a48", l: "#4f6b34", e: "#35491f" },
+  // pares claro/escuro por família de cor
+  skin_azul:         { name: "Azul Claro",    b: "#8ce8f8", d: "#56c6d6", l: "#42a0b9", e: "#186378" },
+  skin_marinho:      { name: "Azul Royal",    b: "#7c9ce0", d: "#5878c4", l: "#4058a0", e: "#2c3d74" },
+  skin_aqua:         { name: "Aqua Claro",    b: "#57c2d4", d: "#3fa3b6", l: "#2e8496", e: "#1d5c6c" },
+  skin_aqua_escuro:  { name: "Aqua Escuro",   b: "#2e8b9e", d: "#226b7c", l: "#184f5d", e: "#0e3540" },
+  skin_cinza:        { name: "Cinza Claro",   b: "#aeb6c0", d: "#868e99", l: "#666e79", e: "#454b55" },
+  skin_cinza_escuro: { name: "Cinza Escuro",  b: "#6a7078", d: "#52575f", l: "#3d4147", e: "#26292e" },
+  skin_roxo:         { name: "Roxo Claro",    b: "#bfa0e8", d: "#9878cc", l: "#7a58ab", e: "#533a78" },
+  skin_roxo_escuro:  { name: "Roxo Escuro",   b: "#7a55b8", d: "#613f99", l: "#4a2e78", e: "#301c52" },
+  skin_rosa:         { name: "Rosa Claro",    b: "#f2aac6", d: "#d688a8", l: "#b06888", e: "#7d4560" },
+  skin_rosa_escuro:  { name: "Rosa Escuro",   b: "#d16a96", d: "#b04d78", l: "#8a375c", e: "#5c2039" },
+  skin_amarelo:      { name: "Amarelo Claro", b: "#f8e88c", d: "#e0c45c", l: "#bf9c3d", e: "#8a6b1d" },
+  skin_mostarda:     { name: "Mostarda",      b: "#e0b83c", d: "#bf9428", l: "#99721d", e: "#6b4e12" },
+  skin_verde:        { name: "Verde Claro",   b: "#a8e8a0", d: "#78c878", l: "#55a458", e: "#2f7038" },
+  skin_musgo:        { name: "Verde Musgo",   b: "#8aa860", d: "#6b8a48", l: "#4f6b34", e: "#35491f" },
+  skin_marrom:       { name: "Marrom Claro",  b: "#c9a178", d: "#a87f58", l: "#855f3e", e: "#573c24" },
+  skin_marrom_escuro:{ name: "Marrom Escuro", b: "#8a6242", d: "#6e4c32", l: "#523823", e: "#362214" },
 };
 
 export const DEFAULT_SKIN = "skin_azul";

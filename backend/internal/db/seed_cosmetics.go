@@ -19,17 +19,23 @@ type cosmeticSeed struct {
 }
 
 var cosmeticItems = []cosmeticSeed{
-	// ── Skins (cores das pelúcias) — todas liberadas por padrão ───────────────
-	{"skin_azul", "Azul Clássico", "skin", "common", nil, "default", nil, 1},
-	{"skin_aqua", "Aqua", "skin", "common", nil, "default", nil, 2},
-	{"skin_cinza", "Cinza", "skin", "common", nil, "default", nil, 3},
-	{"skin_roxo", "Roxo", "skin", "common", nil, "default", nil, 4},
-	{"skin_marinho", "Azul Royal", "skin", "common", nil, "default", nil, 5},
-	{"skin_rosa", "Rosa", "skin", "common", nil, "default", nil, 6},
-	{"skin_amarelo", "Amarelo Claro", "skin", "common", nil, "default", nil, 7},
-	{"skin_mostarda", "Mostarda", "skin", "common", nil, "default", nil, 8},
-	{"skin_verde", "Verde Claro", "skin", "common", nil, "default", nil, 9},
-	{"skin_musgo", "Verde Musgo", "skin", "common", nil, "default", nil, 10},
+	// ── Skins em pares claro/escuro — todas liberadas por padrão ──────────────
+	{"skin_azul", "Azul Claro", "skin", "common", nil, "default", nil, 1},
+	{"skin_marinho", "Azul Royal", "skin", "common", nil, "default", nil, 2},
+	{"skin_aqua", "Aqua Claro", "skin", "common", nil, "default", nil, 3},
+	{"skin_aqua_escuro", "Aqua Escuro", "skin", "common", nil, "default", nil, 4},
+	{"skin_cinza", "Cinza Claro", "skin", "common", nil, "default", nil, 5},
+	{"skin_cinza_escuro", "Cinza Escuro", "skin", "common", nil, "default", nil, 6},
+	{"skin_roxo", "Roxo Claro", "skin", "common", nil, "default", nil, 7},
+	{"skin_roxo_escuro", "Roxo Escuro", "skin", "common", nil, "default", nil, 8},
+	{"skin_rosa", "Rosa Claro", "skin", "common", nil, "default", nil, 9},
+	{"skin_rosa_escuro", "Rosa Escuro", "skin", "common", nil, "default", nil, 10},
+	{"skin_amarelo", "Amarelo Claro", "skin", "common", nil, "default", nil, 11},
+	{"skin_mostarda", "Mostarda", "skin", "common", nil, "default", nil, 12},
+	{"skin_verde", "Verde Claro", "skin", "common", nil, "default", nil, 13},
+	{"skin_musgo", "Verde Musgo", "skin", "common", nil, "default", nil, 14},
+	{"skin_marrom", "Marrom Claro", "skin", "common", nil, "default", nil, 15},
+	{"skin_marrom_escuro", "Marrom Escuro", "skin", "common", nil, "default", nil, 16},
 
 	// ── Look original (arte do Aseprite) — liberado por padrão ────────────────
 	{"hat_beanie_black", "Gorro Preto", "hat", "common", nil, "default", nil, 20},
