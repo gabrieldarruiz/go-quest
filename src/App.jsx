@@ -6,6 +6,9 @@ import { ProgressBar, Tag, AchCard } from "./components/ui.jsx";
 import { LandingPage, LoginPage, SignupPage, ForgotPasswordPage, ResetPasswordPage, AuthRequiredPage } from "./pages/AuthPages.jsx";
 import HojeTab from "./tabs/HojeTab.jsx";
 import TrilhaTab from "./tabs/TrilhaTab.jsx";
+import GopherTab from "./tabs/GopherTab.jsx";
+import GopherAvatar from "./avatar/GopherAvatar.jsx";
+import { DEFAULT_SKIN } from "./avatar/sprites.js";
 import ParceriasTab from "./tabs/ParceriasTab.jsx";
 import RankingTab from "./tabs/RankingTab.jsx";
 import { FerramentasTab, PraticasTab, ComunidadeTab } from "./tabs/RecursosTab.jsx";
@@ -185,6 +188,8 @@ export default function GoQuest() {
   const [pomSessions, setPomSessions] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
   const [showSecondary, setShowSecondary] = useState(false);
+  const [avatar, setAvatar] = useState({ skin: DEFAULT_SKIN, hat: null, glasses: null, outfit: null });
+  const [ownedItems, setOwnedItems] = useState(new Set());
 
   useEffect(() => { const h = () => setRoute(routeFromHash()); window.addEventListener("hashchange", h); return () => window.removeEventListener("hashchange", h); }, []);
   useEffect(() => { setAuthError(""); setAuthMessage(""); }, [route]);
@@ -264,6 +269,7 @@ export default function GoQuest() {
       try { const d = await api.getDailyGoals(uid); const g = d.goals || []; setDailyGoals(g); setTodayDone(new Set(g.filter(x => x.completed).map(x => x.goal_index))); } catch {}
       try { await loadPartnerships(uid); } catch {}
       try { await loadFriends(uid); } catch {}
+      try { const av = await api.getAvatar(uid); if (av?.equipped) setAvatar(av.equipped); setOwnedItems(new Set(av?.owned || [])); } catch {}
       setLoading(false);
     }
     init();
@@ -308,6 +314,7 @@ export default function GoQuest() {
     setUserID(null); setSummary(null); setTotalXP(0); setUnlocked(new Set());
     setDailyGoals([]); setTodayDone(new Set()); setFriends([]); setPartnerships([]);
     setLeaderboard([]); setUserSearch(""); setUserResults([]); setUserSearchError("");
+    setAvatar({ skin: DEFAULT_SKIN, hat: null, glasses: null, outfit: null }); setOwnedItems(new Set());
     goTo("/login");
   }, [goTo]);
 
@@ -369,7 +376,7 @@ export default function GoQuest() {
     return `${fmt(start)} - ${fmt(end)}`.toUpperCase();
   })();
 
-  const primaryTabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["timer","// POMODORO"],["parcerias","// PARCERIAS"],["ranking","// RANKING"],["chat", chatUnread > 0 ? `// CHAT (${chatUnread})` : "// CHAT"]];
+  const primaryTabs = [["hoje","// HOJE"],["trilha","// TRILHA"],["gopher","// GOPHER"],["timer","// POMODORO"],["parcerias","// PARCERIAS"],["ranking","// RANKING"],["chat", chatUnread > 0 ? `// CHAT (${chatUnread})` : "// CHAT"]];
   const secondaryTabs = [["ferramentas","// FERRAMENTAS"],["praticas","// BOAS PRÁTICAS"],["comunidade","// COMUNIDADE"],["mentor","// MENTOR AI"]];
   const resetToken = hashSearchParams().get("token") || "";
 
@@ -419,9 +426,14 @@ export default function GoQuest() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, color: "#ff2d7877", letterSpacing: 4, marginBottom: 4 }}>GOPHER TERMINAL v3.0{loading && <span style={{ color: "#ffcc0088", marginLeft: 16 }}>SINCRONIZANDO▌</span>}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontFamily: "'VT323', monospace", fontSize: 60, lineHeight: 1, letterSpacing: 3, background: "linear-gradient(90deg, #ff2d78, #ff6b35, #ffcc00)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", filter: "drop-shadow(0 0 16px #ff2d7844)" }}>GO_QUEST</div>
-              <div style={{ fontSize: 12, color: "#ff2d7855", letterSpacing: 3, marginTop: 3 }}>{'>'} DE ZERO AO ESPECIALISTA <span style={{ animation: "blink 1s step-end infinite", display: "inline-block" }}>█</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div onClick={() => setTab("gopher")} title="Seu gopher" style={{ cursor: "pointer", filter: "drop-shadow(0 0 8px #ff2d7833)" }} className="mobile-hide">
+                <GopherAvatar {...avatar} scale={2} />
+              </div>
+              <div>
+                <div style={{ fontFamily: "'VT323', monospace", fontSize: 60, lineHeight: 1, letterSpacing: 3, background: "linear-gradient(90deg, #ff2d78, #ff6b35, #ffcc00)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", filter: "drop-shadow(0 0 16px #ff2d7844)" }}>GO_QUEST</div>
+                <div style={{ fontSize: 12, color: "#ff2d7855", letterSpacing: 3, marginTop: 3 }}>{'>'} DE ZERO AO ESPECIALISTA <span style={{ animation: "blink 1s step-end infinite", display: "inline-block" }}>█</span></div>
+              </div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontFamily: "'VT323', monospace", fontSize: 30, letterSpacing: 3, background: "linear-gradient(90deg, #a855f7, #ff2d78)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{timeStr}</div>
@@ -494,6 +506,7 @@ export default function GoQuest() {
         {/* CONTEÚDO */}
         {tab === "hoje" && <HojeTab dailyGoals={dailyGoals} todayDone={todayDone} loading={loading} toggleG={toggleG} toggleA={toggleA} unlocked={unlocked} currentLevel={currentLevel} />}
         {tab === "trilha" && <TrilhaTab unlocked={unlocked} toggleA={toggleA} currentLevel={currentLevel} />}
+        {tab === "gopher" && <GopherTab userID={userID} avatar={avatar} setAvatar={setAvatar} ownedItems={ownedItems} showNotif={showNotif} />}
         {tab === "timer" && <PomodoroTab userID={userID} running={pomRunning} setRunning={setPomRunning} seconds={pomSeconds} isBreak={pomIsBreak} sessions={pomSessions} setSessions={setPomSessions} onReset={pomReset} />}
         {tab === "parcerias" && (
           <ParceriasTab

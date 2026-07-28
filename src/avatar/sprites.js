@@ -1,0 +1,300 @@
+// ─── Sprites pixel art do Gopher (grade 38×52) ────────────────────────────────
+// BASE importada da arte do usuário (src/assets/gopher.png → tools/avatar/gopher_base.json).
+// Itens desenhados por medição sobre a base. Regenerar: node tools/avatar/build_sprites.mjs
+
+export const GRID_W = 38;
+export const GRID_H = 52;
+
+// Skins trocam os 4 tons do corpo (b=corpo, d=sombra, l=sombra profunda, e=anel dos olhos)
+export const SKINS = {
+  skin_azul:    { name: "Azul Clássico", b: "#8ce8f8", d: "#56c6d6", l: "#42a0b9", e: "#186378" },
+  skin_aqua:    { name: "Aqua",          b: "#57c2d4", d: "#3fa3b6", l: "#2e8496", e: "#1d5c6c" },
+  skin_cinza:   { name: "Cinza",         b: "#aeb6c0", d: "#868e99", l: "#666e79", e: "#454b55" },
+  skin_roxo:    { name: "Roxo",          b: "#bfa0e8", d: "#9878cc", l: "#7a58ab", e: "#533a78" },
+  skin_marinho: { name: "Azul Royal",    b: "#7c9ce0", d: "#5878c4", l: "#4058a0", e: "#2c3d74" },
+  skin_rosa:    { name: "Rosa",          b: "#f2aac6", d: "#d688a8", l: "#b06888", e: "#7d4560" },
+};
+
+export const DEFAULT_SKIN = "skin_azul";
+
+// Cores comuns a todas as skins
+const COMMON = {
+  o: "#091717", // contorno / pupila
+  w: "#f8f8f8", // branco (olhos e dentes)
+  m: "#f8e8b9", // tan (focinho, mãos, pés)
+  F: "#d6a878", // tan escuro (dedinhos)
+};
+
+// ─── Gopher base (arte do usuário) ───────────────────────────────────────────
+export const BASE = [
+    "......................................",
+    "......................................",
+    "......................................",
+    "....ooooo....oooooooooooo....ooooo....",
+    "...oobbblo.ooolbbbbbbbbbooo.olbbboo...",
+    "...obbbbblollbbbbbbbbbbbbllolbbbbbo...",
+    "...bbdlloobbbbbbbbbbbbbbbbbboooddbo...",
+    "...obdlobbbbbbbbbbbbbbbbbbbbbboldbd...",
+    "...olbobbbewwwebbbbbbbbewwwebbboblo...",
+    ".....lobewwwwwwebbbbbbewwwwwwebollo...",
+    "....oolb.wwwowowbbbbbbwowowww.bloo....",
+    ".....obewwwoowowebbbbewowoowwwebo.....",
+    "....odbewwwoooowebbbbeooooowwwebdo....",
+    "....odbewwwooooweo.ooewoooowwweboo....",
+    "....obbbwwwwoowwloooolwwoowww.bbbo....",
+    "....obbbbwwwwwwmmoooommwwwwwwbbbbo....",
+    "....dbbbbbbeeemmmmFFmmmmeeebbbbbbo....",
+    "....dbbbbbbbbb.mmmmmmmmmbbbbbbbbbo....",
+    "....dbbbbbbbbb..........bbbbbbbbboo...",
+    "....dbbbbbbbbbbbww.wwwbbbbbbbbbbbo....",
+    "....obbbbbbbbbbbww.wwwbbbbbbbbbbbo....",
+    "....dbbbbbbbbbbb.w..wbbbbbbbbbbbdo....",
+    "....ddbbbbbbbbbbbbbbbbbbbbbbbbbbdo....",
+    "....odbbbbbbbbbbbbbbbbbbbbbbbbbbdo....",
+    "....obbbbbbbbbbbbbbbbbbbbbbbbbbbbo....",
+    "....obbbbbbbbbbbbbbbbbbbbbbbbbbbbo....",
+    "...odbbbbbbbbbbbbbbbbbbbbbbbbbbbbb....",
+    "...obbbbbbbbbbbbbbbbbbbbbbbbbbbbbbo...",
+    "...obbdbbbbbbbbbbbbbbbbbbbbbbbbbbbo...",
+    "..obbb.bbbbbbbbbbbbbbbbbbbbbbbbbbbbo..",
+    "..obbblbbbbbbbbbbbbbbbbbbbbbbbbobbbo..",
+    "..ombolbbbbbbbbbbbbbbbbbbbbbbbbobbmo..",
+    "...mmolbbbbbbbbbbbbbbbbbbbbbbbbdomm...",
+    "..ommodbbbbbbbbbbbbbbbbbbbbbbbbdommo..",
+    "...oodddbbbbbbbbbbbbbbbbbbbbbbddl.F...",
+    "...oodddbbbbbbbbbbbbbbbbbbbbbbdddo....",
+    "....lddddbbbbbbbbbbbbbbbbbbbbddddo....",
+    "....lddddbbbbbbbbbbbbbbbbbbbbddddo....",
+    "....ldddddbbbbbbbbbbbbbbbbbbdddddo....",
+    "....llddddbbbbbbbbbbbbbbbbbdddddlo....",
+    "....olddddddbbbbbbbbbbbbbbddddddlo....",
+    "....olldddddddbbbbbbbbbbbddddddllo....",
+    ".....olddddddddddddddddddddddddlo.....",
+    "......llddddddddddddddddddddddlo......",
+    "......olllddddddddddddddddddllo.......",
+    ".......ooldddddddddddddddddlloo.......",
+    "......ommmFFdd....ddd.....FF.mmo......",
+    ".....ommmmmFFooooooooooooFFmmmmmo.....",
+    ".....ommmmFoo............oFFmm.mo.....",
+    "......ooooo................ooooo......",
+    "......................................",
+    "......................................",
+];
+
+// ─── Itens ───────────────────────────────────────────────────────────────────
+const BEANIE_BLACK = {
+  palette: { k: "#191a24", K: "#2a2c3c", s: "#0e0f16" },
+  rows: [
+    "..............oooooooooo..............",
+    "...........oookKkkkkkkkkooo...........",
+    "........oookkkkkkkkkkkKkkkkooo........",
+    "......ookkkkkkkkkkkkkkkkkkkkkkoo......",
+    ".....okkkkkkkkkkkkkkkkkkkkkkkkkko.....",
+    "....okkkkkkkkkkkkkkkkkkkkkkkkkkkko....",
+    "....okkkkkkkkkkkkkkkkkkkkkkkkkkkko....",
+    "...oKsKKsKKsKKsKKsKKsKKsKKsKKsKKsKoo..",
+    "...oKsKKsKKsKKsKKsKKsKKsKKsKKsKKsKKo..",
+    "...oKsKKsKKsKKsKKsKKsKKsKKsKKsKKsKKo..",
+    "...ooooooooooooooooooooooooooooooooo..",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+  ],
+};
+
+const GLASSES_ROUND = {
+  palette: { R: "#1c1e28", L: "#07080d", G: "#3a3f52", w: "#ffffff" },
+  rows: [
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "............RR.........RRR............",
+    "..........RRRRRww....RRRRRww..........",
+    ".........RLLLLwww...RRLLLLwww.........",
+    "........RLLLLLLwwR.RRLLLLLwwRR........",
+    ".RRRRRRRRLLLLLLLLR.RLLLLLLLLLRRRRRRRR.",
+    ".......RRLLGLLLLLRRRLLGLLLLLLR........",
+    ".......RRLLLLLLLLRRRLLLLLLLLLR........",
+    "........RLGLLLLLLR.RLGLLLLLLLR........",
+    "........RLLLLLLLLR.RRLLLLLLLRR........",
+    ".........RLLLLLLR...RRLLLLLRR.........",
+    "..........RRRRRR.....RRRRRRR..........",
+    "............RR.........RRR............",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+  ],
+};
+
+const COAT_BLACK = {
+  palette: { C: "#1b1d29", D: "#2c2f42", S: "#0d0e15" },
+  rows: [
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+    ".....o..........................o.....",
+    "....oCo........................oCo....",
+    "...oCCCo......................oCCCo...",
+    "...oCCCCo....................oCCCCo...",
+    "..oCCCCCo...................ooCCCCo...",
+    "..oCCCCo......................oCCCCo..",
+    "..oCCCDo......................oDCCCo..",
+    ".oCCCDo........................oDCCCo.",
+    ".oCCCDo........................oDCCCo.",
+    ".oCCCDo........................oDCCCo.",
+    "..oCCCDo......................oDCCCo..",
+    ".oCCCDo........................oDCCCo.",
+    "..oCCCDo......................oDCCCo..",
+    "..oCCCDo.....................oDCCCo...",
+    "...oCCCDo....................oDCCCo...",
+    "...oCCCDo....................oDCCCo...",
+    "...oCCCDo....................oDCCCo...",
+    "...oCCCDo....................oDCCCo...",
+    "...oCCCDo....................oDCCCo...",
+    "...oCCCDoo.................oooDCCCo...",
+    "....oCCommo...............ommoCCCo....",
+    ".....oCommo...............ommoCCo.....",
+    ".....oCCooo...............oooCCo......",
+    "....oCCCCCCoo...........ooCCCCCCo.....",
+    "....oCCCCCCCo...........oCCCCCCCo.....",
+    "....ooooooooo...........ooooooooo.....",
+    "......................................",
+    "......................................",
+    "......................................",
+    "......................................",
+  ],
+};
+
+export const ITEM_SPRITES = {
+  hat_beanie_black: BEANIE_BLACK,
+  glasses_round_black: GLASSES_ROUND,
+  outfit_coat_black: COAT_BLACK,
+};
+
+export const ITEMS = [
+  { id: "hat_beanie_black",    name: "Gorro Preto",    slot: "hat" },
+  { id: "glasses_round_black", name: "Óculos Redondo", slot: "glasses" },
+  { id: "outfit_coat_black",   name: "Casaco Trench",  slot: "outfit" },
+];
+
+// Ordem de pintura: corpo → casaco → óculos → gorro
+export const LAYER_ORDER = ["outfit", "glasses", "hat"];
+
+function paintSprite(ctx, rowsData, palette, scale) {
+  for (let y = 0; y < rowsData.length; y++) {
+    const row = rowsData[y];
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x];
+      if (ch === ".") continue;
+      const color = palette[ch];
+      if (!color) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(x * scale, y * scale, scale, scale);
+    }
+  }
+}
+
+export function drawAvatar(ctx, { skin, hat, glasses, outfit }, scale) {
+  const skinDef = SKINS[skin] || SKINS[DEFAULT_SKIN];
+  const basePalette = { ...COMMON, b: skinDef.b, d: skinDef.d, l: skinDef.l, e: skinDef.e };
+  ctx.clearRect(0, 0, GRID_W * scale, GRID_H * scale);
+  paintSprite(ctx, BASE, basePalette, scale);
+  const equipped = { outfit, glasses, hat };
+  for (const slot of LAYER_ORDER) {
+    const itemID = equipped[slot];
+    if (!itemID || !ITEM_SPRITES[itemID]) continue;
+    const sprite = ITEM_SPRITES[itemID];
+    paintSprite(ctx, sprite.rows, { ...COMMON, m: "#f8e8b9", ...sprite.palette }, scale);
+  }
+}

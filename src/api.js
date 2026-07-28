@@ -105,6 +105,17 @@ export const getPomodoroToday = (userID) =>
 export const getProgress = (userID) =>
   req("GET", `/users/${userID}/progress`);
 
+// ─── Avatar / Cosméticos ─────────────────────────────────────────────────────
+
+export const getCosmetics = () =>
+  req("GET", "/cosmetics");
+
+export const getAvatar = (userID) =>
+  req("GET", `/users/${userID}/avatar`);
+
+export const updateAvatar = (userID, equipped) =>
+  req("PUT", `/users/${userID}/avatar`, equipped);
+
 // ─── AI ─────────────────────────────────────────────────────────────────────
 
 export const aiChat = (messages, system, maxTokens = 900) =>

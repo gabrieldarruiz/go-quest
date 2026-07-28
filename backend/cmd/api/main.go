@@ -45,6 +45,10 @@ func main() {
 		log.Printf("warning: failed to seed goal templates: %v", err)
 	}
 
+	if err := db.SeedCosmetics(context.Background(), pool); err != nil {
+		log.Printf("warning: failed to seed cosmetics: %v", err)
+	}
+
 	repo := repository.New(pool)
 	h := handlers.New(
 		repo,
@@ -109,10 +113,14 @@ func main() {
 				r.Post("/pomodoro", h.CreatePomodoro)
 				r.Get("/pomodoro/today", h.GetPomodoroToday)
 				r.Get("/xp-history", h.GetXPHistory)
+				r.Get("/avatar", h.GetAvatar)
+				r.Put("/avatar", h.UpdateAvatar)
 			})
 		})
 
 		r.Get("/achievements", h.GetAllAchievements)
+
+		r.Get("/cosmetics", h.GetCosmetics)
 
 		r.Get("/leaderboard", h.GetLeaderboard)
 

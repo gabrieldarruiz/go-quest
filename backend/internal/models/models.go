@@ -144,6 +144,31 @@ type LeaderboardEntry struct {
 	WeeklyXP             int    `json:"weekly_xp"`
 }
 
+// Cosmetics / Avatar
+
+type CosmeticItem struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Slot       string  `json:"slot"`
+	Rarity     string  `json:"rarity"`
+	PriceCoins *int    `json:"price_coins,omitempty"`
+	UnlockType string  `json:"unlock_type"`
+	UnlockRef  *string `json:"unlock_ref,omitempty"`
+	SortOrder  int     `json:"sort_order"`
+}
+
+type UserAvatar struct {
+	Skin    string  `json:"skin"`
+	Hat     *string `json:"hat"`
+	Glasses *string `json:"glasses"`
+	Outfit  *string `json:"outfit"`
+}
+
+type AvatarResponse struct {
+	Equipped UserAvatar `json:"equipped"`
+	Owned    []string   `json:"owned"`
+}
+
 // Chat models
 
 type GlobalMessage struct {
