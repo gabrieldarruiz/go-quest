@@ -13,6 +13,10 @@ export const SKINS = {
   skin_roxo:    { name: "Roxo",          b: "#bfa0e8", d: "#9878cc", l: "#7a58ab", e: "#533a78" },
   skin_marinho: { name: "Azul Royal",    b: "#7c9ce0", d: "#5878c4", l: "#4058a0", e: "#2c3d74" },
   skin_rosa:    { name: "Rosa",          b: "#f2aac6", d: "#d688a8", l: "#b06888", e: "#7d4560" },
+  skin_amarelo: { name: "Amarelo Claro", b: "#f8e88c", d: "#e0c45c", l: "#bf9c3d", e: "#8a6b1d" },
+  skin_mostarda:{ name: "Mostarda",      b: "#e0b83c", d: "#bf9428", l: "#99721d", e: "#6b4e12" },
+  skin_verde:   { name: "Verde Claro",   b: "#a8e8a0", d: "#78c878", l: "#55a458", e: "#2f7038" },
+  skin_musgo:   { name: "Verde Musgo",   b: "#8aa860", d: "#6b8a48", l: "#4f6b34", e: "#35491f" },
 };
 
 export const DEFAULT_SKIN = "skin_azul";

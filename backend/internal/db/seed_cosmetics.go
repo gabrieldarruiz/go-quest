@@ -26,11 +26,15 @@ var cosmeticItems = []cosmeticSeed{
 	{"skin_roxo", "Roxo", "skin", "common", nil, "default", nil, 4},
 	{"skin_marinho", "Azul Royal", "skin", "common", nil, "default", nil, 5},
 	{"skin_rosa", "Rosa", "skin", "common", nil, "default", nil, 6},
+	{"skin_amarelo", "Amarelo Claro", "skin", "common", nil, "default", nil, 7},
+	{"skin_mostarda", "Mostarda", "skin", "common", nil, "default", nil, 8},
+	{"skin_verde", "Verde Claro", "skin", "common", nil, "default", nil, 9},
+	{"skin_musgo", "Verde Musgo", "skin", "common", nil, "default", nil, 10},
 
 	// ── Look original (arte do Aseprite) — liberado por padrão ────────────────
-	{"hat_beanie_black", "Gorro Preto", "hat", "common", nil, "default", nil, 10},
-	{"glasses_round_black", "Óculos Redondo", "glasses", "common", nil, "default", nil, 11},
-	{"outfit_coat_black", "Casaco Trench", "outfit", "common", nil, "default", nil, 12},
+	{"hat_beanie_black", "Gorro Preto", "hat", "common", nil, "default", nil, 20},
+	{"glasses_round_black", "Óculos Redondo", "glasses", "common", nil, "default", nil, 21},
+	{"outfit_coat_black", "Casaco Trench", "outfit", "common", nil, "default", nil, 22},
 }
 
 // SeedCosmetics insere/atualiza o catálogo de cosméticos (idempotente).

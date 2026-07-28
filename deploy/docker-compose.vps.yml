@@ -1,0 +1,80 @@
+services:
+  goquest-postgres:
+    image: postgres:16-alpine
+    container_name: goquest-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: goquest
+      POSTGRES_PASSWORD: ${GOQUEST_POSTGRES_PASSWORD}
+      POSTGRES_DB: goquest
+    volumes:
+      - goquest_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goquest -d goquest"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - astra_net
+
+  goquestapi:
+    image: ghcr.io/gabrieldarruiz/go-quest-backend:latest
+    container_name: goquestapi
+    restart: unless-stopped
+    environment:
+      PORT: 8081
+      DATABASE_URL: postgres://goquest:${GOQUEST_POSTGRES_PASSWORD}@goquest-postgres:5432/goquest?sslmode=disable
+      DB_MAX_OPEN_CONNS: ${GOQUEST_DB_MAX_OPEN_CONNS:-25}
+      DB_MAX_IDLE_CONNS: ${GOQUEST_DB_MAX_IDLE_CONNS:-10}
+      DB_CONN_MAX_LIFETIME: ${GOQUEST_DB_CONN_MAX_LIFETIME:-5m}
+      MIGRATIONS_PATH: ./migrations
+      APP_BASE_URL: ${GOQUEST_APP_BASE_URL:-https://go-quest.astrasolution.com.br}
+      RESEND_API_KEY: ${GOQUEST_RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${GOQUEST_RESEND_FROM_EMAIL:-}
+      OPENAI_API_KEY: ${GOQUEST_OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${GOQUEST_OPENAI_MODEL:-gpt-4o-mini}
+    depends_on:
+      goquest-postgres:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=astra_net
+      - traefik.http.routers.goquestapi.rule=Host(`go-quest-api.astrasolution.com.br`)
+      - traefik.http.routers.goquestapi.entrypoints=websecure
+      - traefik.http.routers.goquestapi.tls.certresolver=mytlschallenge
+      - traefik.http.services.goquestapi.loadbalancer.server.port=8081
+      # WebSocket: habilita upgrade de protocolo no Traefik
+      - traefik.http.middlewares.goquestapi-ws.headers.customrequestheaders.X-Forwarded-Proto=https
+      - traefik.http.routers.goquestapi.middlewares=goquestapi-ws@docker
+    networks:
+      - astra_net
+
+  goquestfront:
+    image: ghcr.io/gabrieldarruiz/go-quest-frontend:latest
+    container_name: goquestfront
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=astra_net
+      - traefik.http.routers.goquestfront.rule=Host(`go-quest.astrasolution.com.br`)
+      - traefik.http.routers.goquestfront.entrypoints=websecure
+      - traefik.http.routers.goquestfront.tls.certresolver=mytlschallenge
+      - traefik.http.routers.goquestfront.middlewares=goquestfront-headers@docker
+      - traefik.http.middlewares.goquestfront-headers.headers.SSLRedirect=true
+      - traefik.http.middlewares.goquestfront-headers.headers.STSSeconds=315360000
+      - traefik.http.middlewares.goquestfront-headers.headers.browserXSSFilter=true
+      - traefik.http.middlewares.goquestfront-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.goquestfront-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.goquestfront-headers.headers.SSLHost=go-quest.astrasolution.com.br
+      - traefik.http.middlewares.goquestfront-headers.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.goquestfront-headers.headers.STSPreload=true
+      - traefik.http.services.goquestfront.loadbalancer.server.port=80
+    networks:
+      - astra_net
+
+networks:
+  astra_net:
+    external: true
+
+volumes:
+  goquest_postgres_data:
