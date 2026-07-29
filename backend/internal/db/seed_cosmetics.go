@@ -47,6 +47,8 @@ var cosmeticItems = []cosmeticSeed{
 	{"outfit_goku", "Gi Laranja", "outfit", "epic", nil, "default", nil, 24},
 	{"hat_straw", "Chapéu de Palha", "hat", "epic", nil, "default", nil, 25},
 	{"outfit_luffy", "Colete do Pirata", "outfit", "epic", nil, "default", nil, 26},
+	{"hat_naruto", "Bandana Ninja", "hat", "epic", nil, "default", nil, 27},
+	{"outfit_naruto", "Jaqueta Ninja", "outfit", "epic", nil, "default", nil, 28},
 }
 
 // SeedCosmetics insere/atualiza o catálogo de cosméticos (idempotente).

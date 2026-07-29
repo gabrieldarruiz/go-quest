@@ -31,7 +31,7 @@ for (const [ch, hx] of Object.entries(src.palette)) {
 }
 
 // ── pad para a grade do jogo ─────────────────────────────────────────────────
-const PAD_L = 2, PAD_T = 8, PAD_B = 2;
+const PAD_L = 2, PAD_T = 12, PAD_B = 2;
 export const W = src.width + PAD_L + 2;   // 38
 export const H = src.height + PAD_T + PAD_B; // 52
 const grid = () => Array.from({ length: H }, () => Array(W).fill("."));
@@ -291,6 +291,8 @@ const ITEM_DEFS = [
   { id: "outfit_coat_black",   name: "Casaco Trench",    slot: "outfit",  gen: genCoat,      palette: { C: "#1b1d29", D: "#2c2f42", S: "#0d0e15" } },
   { id: "outfit_goku",         name: "Gi Laranja",       slot: "outfit",  gen: genGokuGi,    palette: { C: "#e8862c", D: "#f2a04c", S: "#c26a1e", B: "#2a4a8a" } },
   { id: "outfit_luffy",        name: "Colete do Pirata", slot: "outfit",  gen: genLuffyVest, palette: { C: "#d83030", D: "#ef5a4a", S: "#a82424" } },
+  { id: "hat_naruto",          name: "Bandana Ninja",    slot: "hat",     gen: null,         palette: {} },
+  { id: "outfit_naruto",       name: "Jaqueta Ninja",    slot: "outfit",  gen: null,         palette: {} },
 ];
 
 const CHAR_POOL = "abcdefghijknpqrstuvxyzABCDEGHIJKLMNOPQRSTUVXYZ0123456789";
@@ -302,34 +304,51 @@ function loadHandDrawn(id) {
     console.log(`AVISO: items/${id}.png é ${img.w}x${img.h}, esperado ${W}x${H} — ignorando`);
     return null;
   }
+  // 1ª passada: conta cores
+  const counts = new Map();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const [cr, cg, cb, ca] = img.px(x, y);
+    if (ca < 128) continue;
+    const key = `${cr},${cg},${cb}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  // agrupa cores parecidas (arte importada tem ruído; desenho limpo passa intacto)
+  const cdist = (a, b) => Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+  const clusters = [];
+  for (const [key, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+    const c = key.split(",").map(Number);
+    const hit = clusters.find(cl => cdist(cl.color, c) < 30);
+    if (hit) hit.members.set(key, hit);
+    else { const cl = { color: c, members: new Map() }; cl.members.set(key, cl); clusters.push(cl); }
+  }
+  if (clusters.length > CHAR_POOL.length) throw new Error(`items/${id}.png tem cores demais mesmo agrupando (max ${CHAR_POOL.length})`);
   const colorChar = new Map(), palette = {};
-  let next = 0;
+  clusters.forEach((cl, i) => {
+    const ch = CHAR_POOL[i];
+    palette[ch] = "#" + cl.color.map(v => v.toString(16).padStart(2, "0")).join("");
+    for (const key of cl.members.keys()) colorChar.set(key, ch);
+  });
   const rowsArr = [];
   for (let y = 0; y < H; y++) {
     let r = "";
     for (let x = 0; x < W; x++) {
       const [cr, cg, cb, ca] = img.px(x, y);
-      if (ca < 128) { r += "."; continue; }
-      const hex = "#" + [cr, cg, cb].map(v => v.toString(16).padStart(2, "0")).join("");
-      if (!colorChar.has(hex)) {
-        const ch = CHAR_POOL[next++];
-        if (!ch) throw new Error(`items/${id}.png tem cores demais (max ${CHAR_POOL.length})`);
-        colorChar.set(hex, ch);
-        palette[ch] = hex;
-      }
-      r += colorChar.get(hex);
+      r += ca < 128 ? "." : colorChar.get(`${cr},${cg},${cb}`);
     }
     rowsArr.push(r);
   }
-  console.log(`item ${id}: usando PNG desenhado à mão (${colorChar.size} cores)`);
+  console.log(`item ${id}: usando PNG desenhado à mão (${clusters.length} cores)`);
   return { palette, rows: rowsArr };
 }
 
 const gridRows = g => g.map(r => r.join(""));
 const itemsData = ITEM_DEFS.map(def => ({
   ...def,
-  sprite: loadHandDrawn(def.id) || { palette: def.palette, rows: gridRows(def.gen()) },
-}));
+  sprite: loadHandDrawn(def.id) || (def.gen ? { palette: def.palette, rows: gridRows(def.gen()) } : null),
+})).filter(d => {
+  if (!d.sprite) console.log(`item ${d.id}: sem PNG e sem gerador — fora desta build`);
+  return d.sprite;
+});
 
 // ── emite sprites.js ─────────────────────────────────────────────────────────
 const fmtRows = rr => rr.map(r => `    "${r}",`).join("\n");
@@ -437,15 +456,16 @@ const BASE_PAL = {
   o: "#091717", b: "#8ce8f8", d: "#56c6d6", l: "#42a0b9", e: "#186378",
   w: "#f8f8f8", m: "#f8e8b9", F: "#d6a878",
 };
-const item = id => itemsData.find(d => d.id === id).sprite;
+const item = id => itemsData.find(d => d.id === id)?.sprite;
 const baseLayer = { rows: gridRows(genBase()), palette: BASE_PAL };
-const asLayer = id => ({ rows: item(id).rows, palette: { ...BASE_PAL, ...item(id).palette } });
+const asLayer = id => item(id) && { rows: item(id).rows, palette: { ...BASE_PAL, ...item(id).palette } };
 const layersList = [
   [baseLayer],
   [baseLayer, asLayer("outfit_coat_black"), asLayer("glasses_round_black"), asLayer("hat_beanie_black")],
   [baseLayer, asLayer("outfit_goku"), asLayer("hat_goku")],
   [baseLayer, asLayer("outfit_luffy"), asLayer("hat_straw")],
-];
+  [baseLayer, asLayer("outfit_naruto"), asLayer("hat_naruto")],
+].map(col => col.filter(Boolean));
 
 const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
