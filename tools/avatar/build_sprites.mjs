@@ -1,8 +1,10 @@
 // Gera src/avatar/sprites.js a partir da ARTE DO USUÁRIO (gopher_base.json,
 // importada de src/assets/gopher.png via import_reference.mjs).
-// Os itens (gorro/óculos/casaco) são desenhados por cima, encaixados por medição.
-import { readFileSync, writeFileSync } from "node:fs";
+// Itens: se existir tools/avatar/items/<id>.png (1x, canvas igual ao do jogo,
+// fundo transparente), usa a arte desenhada à mão; senão desenha procedural.
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { deflateSync } from "node:zlib";
+import { decodePNG } from "./import_png.mjs";
 
 const HERE = new URL(".", import.meta.url).pathname;
 const src = JSON.parse(readFileSync(`${HERE}/gopher_base.json`, "utf8"));
@@ -280,12 +282,72 @@ export function genLuffyVest() {
   return g;
 }
 
+// ── monta os itens: PNG desenhado à mão (items/<id>.png) ou procedural ───────
+const ITEM_DEFS = [
+  { id: "hat_beanie_black",    name: "Gorro Preto",      slot: "hat",     gen: genBeanie,    palette: { k: "#191a24", K: "#2a2c3c", s: "#0e0f16" } },
+  { id: "hat_goku",            name: "Cabelo Saiyajin",  slot: "hat",     gen: genGokuHair,  palette: { k: "#16161e", K: "#30323f" } },
+  { id: "hat_straw",           name: "Chapéu de Palha",  slot: "hat",     gen: genStrawHat,  palette: { Y: "#e8c86a", y: "#c8a44a", r: "#c83232" } },
+  { id: "glasses_round_black", name: "Óculos Redondo",   slot: "glasses", gen: genGlasses,   palette: { R: "#1c1e28", L: "#07080d", G: "#3a3f52", w: "#ffffff" } },
+  { id: "outfit_coat_black",   name: "Casaco Trench",    slot: "outfit",  gen: genCoat,      palette: { C: "#1b1d29", D: "#2c2f42", S: "#0d0e15" } },
+  { id: "outfit_goku",         name: "Gi Laranja",       slot: "outfit",  gen: genGokuGi,    palette: { C: "#e8862c", D: "#f2a04c", S: "#c26a1e", B: "#2a4a8a" } },
+  { id: "outfit_luffy",        name: "Colete do Pirata", slot: "outfit",  gen: genLuffyVest, palette: { C: "#d83030", D: "#ef5a4a", S: "#a82424" } },
+];
+
+const CHAR_POOL = "abcdefghijknpqrstuvxyzABCDEGHIJKLMNOPQRSTUVXYZ0123456789";
+function loadHandDrawn(id) {
+  const p = `${HERE}/items/${id}.png`;
+  if (!existsSync(p)) return null;
+  const img = decodePNG(readFileSync(p));
+  if (img.w !== W || img.h !== H) {
+    console.log(`AVISO: items/${id}.png é ${img.w}x${img.h}, esperado ${W}x${H} — ignorando`);
+    return null;
+  }
+  const colorChar = new Map(), palette = {};
+  let next = 0;
+  const rowsArr = [];
+  for (let y = 0; y < H; y++) {
+    let r = "";
+    for (let x = 0; x < W; x++) {
+      const [cr, cg, cb, ca] = img.px(x, y);
+      if (ca < 128) { r += "."; continue; }
+      const hex = "#" + [cr, cg, cb].map(v => v.toString(16).padStart(2, "0")).join("");
+      if (!colorChar.has(hex)) {
+        const ch = CHAR_POOL[next++];
+        if (!ch) throw new Error(`items/${id}.png tem cores demais (max ${CHAR_POOL.length})`);
+        colorChar.set(hex, ch);
+        palette[ch] = hex;
+      }
+      r += colorChar.get(hex);
+    }
+    rowsArr.push(r);
+  }
+  console.log(`item ${id}: usando PNG desenhado à mão (${colorChar.size} cores)`);
+  return { palette, rows: rowsArr };
+}
+
+const gridRows = g => g.map(r => r.join(""));
+const itemsData = ITEM_DEFS.map(def => ({
+  ...def,
+  sprite: loadHandDrawn(def.id) || { palette: def.palette, rows: gridRows(def.gen()) },
+}));
+
 // ── emite sprites.js ─────────────────────────────────────────────────────────
-const rows = g => g.map(r => `    "${r.join("")}",`).join("\n");
+const fmtRows = rr => rr.map(r => `    "${r}",`).join("\n");
+const fmtPal = p => Object.entries(p).map(([k, v]) => `${JSON.stringify(k)}: "${v}"`).join(", ");
+
+const itemsSection = itemsData.map(d => `  ${d.id}: {
+    palette: { ${fmtPal(d.sprite.palette)} },
+    rows: [
+${fmtRows(d.sprite.rows)}
+    ],
+  },`).join("\n");
+
+const itemsCatalog = itemsData.map(d => `  { id: "${d.id}", name: "${d.name}", slot: "${d.slot}" },`).join("\n");
 
 const content = `// ─── Sprites pixel art do Gopher (grade ${W}×${H}) ────────────────────────────────
 // BASE importada da arte do usuário (src/assets/gopher.png → tools/avatar/gopher_base.json).
-// Itens desenhados por medição sobre a base. Regenerar: node tools/avatar/build_sprites.mjs
+// Itens: PNG desenhado à mão em tools/avatar/items/ ou procedural por medição.
+// Regenerar: node tools/avatar/build_sprites.mjs
 
 export const GRID_W = ${W};
 export const GRID_H = ${H};
@@ -314,7 +376,7 @@ export const SKINS = {
 export const DEFAULT_SKIN = "skin_azul";
 
 // Cores comuns a todas as skins
-const COMMON = {
+export const COMMON = {
   o: "#091717", // contorno / pupila
   w: "#f8f8f8", // branco (olhos e dentes)
   m: "#f8e8b9", // tan (focinho, mãos, pés)
@@ -323,80 +385,19 @@ const COMMON = {
 
 // ─── Gopher base (arte do usuário) ───────────────────────────────────────────
 export const BASE = [
-${rows(genBase())}
+${fmtRows(gridRows(genBase()))}
 ];
 
 // ─── Itens ───────────────────────────────────────────────────────────────────
-const BEANIE_BLACK = {
-  palette: { k: "#191a24", K: "#2a2c3c", s: "#0e0f16" },
-  rows: [
-${rows(genBeanie())}
-  ],
-};
-
-const GLASSES_ROUND = {
-  palette: { R: "#1c1e28", L: "#07080d", G: "#3a3f52", w: "#ffffff" },
-  rows: [
-${rows(genGlasses())}
-  ],
-};
-
-const COAT_BLACK = {
-  palette: { C: "#1b1d29", D: "#2c2f42", S: "#0d0e15" },
-  rows: [
-${rows(genCoat())}
-  ],
-};
-
-const GOKU_HAIR = {
-  palette: { k: "#16161e", K: "#30323f" },
-  rows: [
-${rows(genGokuHair())}
-  ],
-};
-
-const STRAW_HAT = {
-  palette: { Y: "#e8c86a", y: "#c8a44a", r: "#c83232" },
-  rows: [
-${rows(genStrawHat())}
-  ],
-};
-
-const GOKU_GI = {
-  palette: { C: "#e8862c", D: "#f2a04c", S: "#c26a1e", B: "#2a4a8a" },
-  rows: [
-${rows(genGokuGi())}
-  ],
-};
-
-const LUFFY_VEST = {
-  palette: { C: "#d83030", D: "#ef5a4a", S: "#a82424" },
-  rows: [
-${rows(genLuffyVest())}
-  ],
-};
-
 export const ITEM_SPRITES = {
-  hat_beanie_black: BEANIE_BLACK,
-  glasses_round_black: GLASSES_ROUND,
-  outfit_coat_black: COAT_BLACK,
-  hat_goku: GOKU_HAIR,
-  hat_straw: STRAW_HAT,
-  outfit_goku: GOKU_GI,
-  outfit_luffy: LUFFY_VEST,
+${itemsSection}
 };
 
 export const ITEMS = [
-  { id: "hat_beanie_black",    name: "Gorro Preto",      slot: "hat" },
-  { id: "hat_goku",            name: "Cabelo Saiyajin",  slot: "hat" },
-  { id: "hat_straw",           name: "Chapéu de Palha",  slot: "hat" },
-  { id: "glasses_round_black", name: "Óculos Redondo",   slot: "glasses" },
-  { id: "outfit_coat_black",   name: "Casaco Trench",    slot: "outfit" },
-  { id: "outfit_goku",         name: "Gi Laranja",       slot: "outfit" },
-  { id: "outfit_luffy",        name: "Colete do Pirata", slot: "outfit" },
+${itemsCatalog}
 ];
 
-// Ordem de pintura: corpo → casaco → óculos → gorro
+// Ordem de pintura: corpo → roupa → óculos → cabeça
 export const LAYER_ORDER = ["outfit", "glasses", "hat"];
 
 function paintSprite(ctx, rowsData, palette, scale) {
@@ -423,7 +424,7 @@ export function drawAvatar(ctx, { skin, hat, glasses, outfit }, scale) {
     const itemID = equipped[slot];
     if (!itemID || !ITEM_SPRITES[itemID]) continue;
     const sprite = ITEM_SPRITES[itemID];
-    paintSprite(ctx, sprite.rows, { ...COMMON, m: "#f8e8b9", ...sprite.palette }, scale);
+    paintSprite(ctx, sprite.rows, { ...COMMON, ...sprite.palette }, scale);
   }
 }
 `;
@@ -432,26 +433,24 @@ writeFileSync(`${HERE}/../../src/avatar/sprites.js`, content);
 console.log(`sprites.js gerado (${W}x${H}) — olhos: L(${M.eyeL.cx.toFixed(1)},${M.eyeL.cy.toFixed(1)} r${M.eyeL.r.toFixed(1)}) R(${M.eyeR.cx.toFixed(1)},${M.eyeR.cy.toFixed(1)})`);
 
 // ── preview PNG ──────────────────────────────────────────────────────────────
-const PAL = {
+const BASE_PAL = {
   o: "#091717", b: "#8ce8f8", d: "#56c6d6", l: "#42a0b9", e: "#186378",
   w: "#f8f8f8", m: "#f8e8b9", F: "#d6a878",
-  k: "#191a24", K: "#2a2c3c", s: "#0e0f16", R: "#1c1e28", L: "#07080d", G: "#3a3f52",
-  C: "#1b1d29", D: "#2c2f42", S: "#0d0e15",
-  Y: "#e8c86a", y: "#c8a44a", r: "#c83232", B: "#2a4a8a",
 };
-const GOKU_PAL = { k: "#16161e", K: "#30323f", C: "#e8862c", D: "#f2a04c", S: "#c26a1e" };
-const LUFFY_PAL = { C: "#d83030", D: "#ef5a4a", S: "#a82424" };
+const item = id => itemsData.find(d => d.id === id).sprite;
+const baseLayer = { rows: gridRows(genBase()), palette: BASE_PAL };
+const asLayer = id => ({ rows: item(id).rows, palette: { ...BASE_PAL, ...item(id).palette } });
+const layersList = [
+  [baseLayer],
+  [baseLayer, asLayer("outfit_coat_black"), asLayer("glasses_round_black"), asLayer("hat_beanie_black")],
+  [baseLayer, asLayer("outfit_goku"), asLayer("hat_goku")],
+  [baseLayer, asLayer("outfit_luffy"), asLayer("hat_straw")],
+];
+
 const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const b = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(b)); return Buffer.concat([l, b, c]); };
-// cada camada: [grid, paletaExtra] — a paleta extra vence o PAL global
-const layersList = [
-  [[genBase(), null]],
-  [[genBase(), null], [genCoat(), null], [genGlasses(), null], [genBeanie(), null]],
-  [[genBase(), null], [genGokuGi(), GOKU_PAL], [genGokuHair(), GOKU_PAL]],
-  [[genBase(), null], [genLuffyVest(), LUFFY_PAL], [genStrawHat(), null]],
-];
-const S = 9, sep = 2, PW = layersList.length * W * S + sep * S, PH = H * S;
+const S = 9, sep = 2, PW = layersList.length * W * S + (layersList.length - 1) * sep * S, PH = H * S;
 const raw = Buffer.alloc(PH * (1 + PW * 4));
 const bghex = [0x3a, 0x2a, 0x4a];
 for (let y = 0; y < PH; y++) {
@@ -463,9 +462,12 @@ for (let y = 0; y < PH; y++) {
     if (gi < layersList.length && lx < W * S) {
       const layers = layersList[gi];
       for (let li = layers.length - 1; li >= 0; li--) {
-        const [lg, lpal] = layers[li];
-        const ch = lg[Math.floor(y / S)][Math.floor(lx / S)];
-        if (ch !== ".") { const hx = (lpal && lpal[ch]) || PAL[ch]; rgb = [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16)); break; }
+        const ch = layers[li].rows[Math.floor(y / S)][Math.floor(lx / S)];
+        if (ch !== ".") {
+          const hx = layers[li].palette[ch] || "#ff00ff";
+          rgb = [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16));
+          break;
+        }
       }
     }
     const o = rs + 1 + x * 4;
